@@ -1204,7 +1204,6 @@ namespace AiKodexDeepVoice
             );
         }
 
-
         IEnumerator Post(string url, string bodyJsonString)
         {
             var request = new UnityWebRequest(url, "POST");
@@ -1215,43 +1214,144 @@ namespace AiKodexDeepVoice
             yield return request.SendWebRequest();
             postProgress = 1;
             postFlag = false;
+
             if (request.result != UnityWebRequest.Result.Success)
             {
                 Debug.Log("There was an error in generating the voice. Please check your invoice/order number and try again or check the documentation for more information.");
-                if(request.responseCode == 400)
+                if (request.responseCode == 400)
                 {
                     Debug.Log("Error in text field: Please check your prompt for quotes (\"\") and line breaks at the end of the prompt. There could also be special formatting in your text. Please remove any special formatting by pasting as plain text in a notepad and then pasting the text here. Inclusion of any special formatting or illegal characters will result in an error such as this. For best results, please use a combination of letters, periods and commas and make sure there are no line breaks in between or at the end. If you must use quotes or line breaks, please prepend them with a backslash. Please do not press enter in the text field before clicking on generate.");
                 }
             }
             else
             {
-                if(request.responseCode == 400)
+                if (request.responseCode == 400)
                 {
                     Debug.Log("Error in text field: Please check your prompt for quotes (\"\") and line breaks at the end of the prompt. There could also be special formatting in your text. Please remove any special formatting by pasting as plain text in a notepad and then pasting the text here. Inclusion of any special formatting or illegal characters will result in an error such as this. For best results, please use a combination of letters, periods and commas and make sure there are no line breaks in between or at the end. If you must use quotes or line breaks, please prepend them with a backslash. Please do not press enter in the text field before clicking on generate.");
                 }
-                if (request.downloadHandler.text == "Invalid Response")
+
+                string responseText = request.downloadHandler.text;
+
+                if (responseText == "Invalid Response")
+                {
                     Debug.Log("Invalid Invoice/Order Number. Please check your invoice/order number and try again.");
-                else if(request.downloadHandler.text == "Limit Reached")
+                }
+                else if (responseText == "Limit Reached")
+                {
                     Debug.Log("It seems that you may have reached the limit. To check your character usage, please click on the Status button. Please wait until 30th/31st of the month to get a renewed character count. Thank you for using DeepVoice.");
+                }
                 else
                 {
-                    byte[] soundBytes = System.Convert.FromBase64String(request.downloadHandler.text);
-                    File.WriteAllBytes($"{_directoryPath}/{fileName}.mp3", soundBytes);
-                    AssetDatabase.Refresh();
-                    AudioClip audioFile = (AudioClip)AssetDatabase.LoadMainAssetAtPath($"{_directoryPath}/{fileName}.mp3");
-                    WaveUtils.Save($"{fileName}", audioFile, _directoryPath, false);
-                    Selection.activeObject = AssetDatabase.LoadMainAssetAtPath($"{_directoryPath}/{fileName}.wav");
-                    File.Delete($"{_directoryPath}/{fileName}.mp3");
-                    File.Delete($"{_directoryPath}/{fileName}.mp3.meta");
-                    AssetDatabase.Refresh();
-                    Selection.activeObject = (AudioClip)AssetDatabase.LoadMainAssetAtPath($"{_directoryPath}/{fileName}.wav");
-                    Debug.Log($"<color=green>Inference Successful: </color>Please find the audio clip named {fileName} in {_directoryPath}");
-                    take = (int.Parse(take) + 1).ToString();
+                    // Check if response is JSON
+                    if (responseText.StartsWith("{"))
+                    {
+                        Debug.Log($"Full JSON Response: {responseText}");
+
+                        // Try multiple possible field names
+                        string[] possibleFields = { "\"audio\"", "\"data\"", "\"audio_data\"", "\"base64\"", "\"content\"", "\"file\"" };
+                        string base64Audio = null;
+
+                        foreach (string field in possibleFields)
+                        {
+                            int fieldIndex = responseText.IndexOf(field);
+                            if (fieldIndex > -1)
+                            {
+                                Debug.Log($"Found field: {field}");
+                                int audioStart = responseText.IndexOf("\"", fieldIndex + field.Length) + 1;
+                                int audioEnd = responseText.IndexOf("\"", audioStart);
+                                base64Audio = responseText.Substring(audioStart, audioEnd - audioStart);
+                                Debug.Log($"Extracted base64 length: {base64Audio.Length}");
+                                break;
+                            }
+                        }
+
+                        if (base64Audio != null && base64Audio.Length > 0)
+                        {
+                            byte[] soundBytes = null;
+                            bool conversionSuccess = false;
+
+                            try
+                            {
+                                soundBytes = System.Convert.FromBase64String(base64Audio);
+                                Debug.Log($"Decoded {soundBytes.Length} bytes");
+                                conversionSuccess = true;
+                            }
+                            catch (System.Exception e)
+                            {
+                                Debug.LogError($"Error decoding base64: {e.Message}");
+                            }
+
+                            if (conversionSuccess && soundBytes != null)
+                            {
+                                // Check file signature
+                                string header = "";
+                                for (int i = 0; i < Math.Min(16, soundBytes.Length); i++)
+                                {
+                                    header += soundBytes[i].ToString("X2") + " ";
+                                }
+                                Debug.Log($"Audio file header: {header}");
+
+                                File.WriteAllBytes($"{_directoryPath}/{fileName}.mp3", soundBytes);
+                                AssetDatabase.Refresh();
+
+                                // Wait for import
+                                yield return null;
+                                yield return null;
+
+                                AudioClip audioFile = AssetDatabase.LoadAssetAtPath<AudioClip>($"{_directoryPath}/{fileName}.mp3");
+
+                                if (audioFile != null)
+                                {
+                                    WaveUtils.Save($"{fileName}", audioFile, _directoryPath, false);
+                                    Selection.activeObject = AssetDatabase.LoadMainAssetAtPath($"{_directoryPath}/{fileName}.wav");
+                                    File.Delete($"{_directoryPath}/{fileName}.mp3");
+                                    File.Delete($"{_directoryPath}/{fileName}.mp3.meta");
+                                    AssetDatabase.Refresh();
+                                    Selection.activeObject = AssetDatabase.LoadAssetAtPath<AudioClip>($"{_directoryPath}/{fileName}.wav");
+                                    Debug.Log($"<color=green>Inference Successful: </color>Please find the audio clip named {fileName} in {_directoryPath}");
+                                    take = (int.Parse(take) + 1).ToString();
+                                }
+                                else
+                                {
+                                    Debug.LogError("Failed to load MP3 as AudioClip");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Debug.LogError("Could not find audio data in JSON. Please check the full JSON response above.");
+                        }
+                    }
+                    else
+                    {
+                        // Original base64 processing
+                        byte[] soundBytes = System.Convert.FromBase64String(responseText);
+                        File.WriteAllBytes($"{_directoryPath}/{fileName}.mp3", soundBytes);
+                        AssetDatabase.Refresh();
+
+                        yield return null;
+                        yield return null;
+
+                        AudioClip audioFile = AssetDatabase.LoadAssetAtPath<AudioClip>($"{_directoryPath}/{fileName}.mp3");
+
+                        if (audioFile != null)
+                        {
+                            WaveUtils.Save($"{fileName}", audioFile, _directoryPath, false);
+                            Selection.activeObject = AssetDatabase.LoadMainAssetAtPath($"{_directoryPath}/{fileName}.wav");
+                            File.Delete($"{_directoryPath}/{fileName}.mp3");
+                            File.Delete($"{_directoryPath}/{fileName}.mp3.meta");
+                            AssetDatabase.Refresh();
+                            Selection.activeObject = AssetDatabase.LoadAssetAtPath<AudioClip>($"{_directoryPath}/{fileName}.wav");
+                            Debug.Log($"<color=green>Inference Successful: </color>Please find the audio clip named {fileName} in {_directoryPath}");
+                            take = (int.Parse(take) + 1).ToString();
+                        }
+                    }
                 }
             }
 
             request.Dispose();
         }
+
         IEnumerator Status(string url, string bodyJsonString)
         {
             var request = new UnityWebRequest(url, "POST");

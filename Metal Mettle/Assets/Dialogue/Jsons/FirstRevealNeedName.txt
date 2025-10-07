@@ -1,0 +1,177 @@
+{
+  "sequences": [
+    {
+      "sequenceId": "marcus_mask_name_confrontation",
+      "lines": [
+        {
+          "speaker": "Marcus",
+          "text": "Alright. If we're... if this is happening, I need to call you something. You got a name?",
+          "customDelay": -1,
+          "audioClipName": "marcus_need_name"
+        },
+        {
+          "speaker": "Mask",
+          "text": "Names are for individuals, Marcus. We are beyond such things now.",
+          "customDelay": -1,
+          "audioClipName": "mask_beyond_names"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "That's not an answer. What did they call you? The people who made you? The... the civilization or whatever?",
+          "customDelay": -1,
+          "audioClipName": "marcus_civilization"
+        },
+        {
+          "speaker": "Mask",
+          "text": "Lost. Forgotten. Consumed by the Darkness long before your kind learned to make fire.",
+          "customDelay": -1,
+          "audioClipName": "mask_lost_forgotten"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Fine. What did the last guy call you? The last poor bastard who wore you?",
+          "customDelay": -1,
+          "audioClipName": "marcus_last_guy"
+        },
+        {
+          "speaker": "Mask",
+          "text": "He called us many things. 'Devil.' 'Salvation.' 'Master.' In the end, he simply called us 'We.'",
+          "customDelay": -1,
+          "audioClipName": "mask_many_things"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Stop saying that. Stop saying 'we.' I'm Marcus. You're... you're something else.",
+          "customDelay": -1,
+          "audioClipName": "marcus_stop_we"
+        },
+        {
+          "speaker": "Mask",
+          "text": "Are we? Look at your hands, Marcus. Whose strength moves them? Whose hunger drives them?",
+          "customDelay": -1,
+          "audioClipName": "mask_whose_strength"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Mine. My hands. My body. You're just... you're a goddamn parasite. A leech. That's what I'll call you—Leech.",
+          "customDelay": -1,
+          "audioClipName": "marcus_parasite_leech"
+        },
+        {
+          "speaker": "Mask",
+          "text": "Call us what you wish. It changes nothing. We are one flesh now. One hunger. One purpose.",
+          "customDelay": -1,
+          "audioClipName": "mask_one_flesh"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Bullshit. You've got a name. Everything's got a name. What about before? Before you latched onto people's faces? What were you called then?",
+          "customDelay": -1,
+          "audioClipName": "marcus_before"
+        },
+        {
+          "speaker": "Mask",
+          "text": "We emerged from the Darkness itself. We were not named—we were willed into being. The Darkness has no language, no words. Only hunger. Only need.",
+          "customDelay": -1,
+          "audioClipName": "mask_darkness_willed"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "The Darkness. You keep saying that. What the hell is 'the Darkness'?",
+          "customDelay": -1,
+          "audioClipName": "marcus_what_darkness"
+        },
+        {
+          "speaker": "Mask",
+          "text": "The void between stars. The silence in a drunkard's empty bottle. The space where hope used to be. Surely you know it intimately, Marcus.",
+          "customDelay": -1,
+          "audioClipName": "mask_void_silence"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "What's that supposed to mean?",
+          "customDelay": -1,
+          "audioClipName": "marcus_what_mean"
+        },
+        {
+          "speaker": "Mask",
+          "text": "You carried your own darkness long before we found you. Years of it. Drowning in it, night after night, bottle after bottle. We know that darkness well. We were born from it.",
+          "customDelay": -1,
+          "audioClipName": "mask_your_darkness"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "That's... that's different. That was—",
+          "customDelay": -1,
+          "audioClipName": "marcus_thats_different"
+        },
+        {
+          "speaker": "Mask",
+          "text": "Your war? Your trauma? Your failed marriage? Your son watching you destroy yourself? We know every shadow in your soul, Marcus. We chose you because of them.",
+          "customDelay": -1,
+          "audioClipName": "mask_every_shadow"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Shut up. You don't know anything about—",
+          "customDelay": -1,
+          "audioClipName": "marcus_shut_up"
+        },
+        {
+          "speaker": "Mask",
+          "text": "But we do. We tasted your darkness the moment you entered this place. Broken Marine. Defeated father. Hollow man with nothing left but another drink and oblivion. You were perfect.",
+          "customDelay": -1,
+          "audioClipName": "mask_tasted_darkness"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "I'M NOT PERFECT! I'm a goddamn mess! That's why I came here drunk off my ass—to end it or find something, anything—",
+          "customDelay": -1,
+          "audioClipName": "marcus_not_perfect"
+        },
+        {
+          "speaker": "Mask",
+          "text": "And you found us. Or rather, we found you. The Darkness calls to darkness, Marcus. Like seeks like.",
+          "customDelay": -1,
+          "audioClipName": "mask_found_you"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Fine. Great. Poetic. But you still need a name. I'm not spending... however long this takes calling you 'the mask' or listening to your 'we' bullshit.",
+          "customDelay": -1,
+          "audioClipName": "marcus_still_need_name"
+        },
+        {
+          "speaker": "Mask",
+          "text": "Names create distance. Separation. But there is no separation anymore. Your jaw is our jaw. Your hunger is our hunger. Your darkness... is our home.",
+          "customDelay": -1,
+          "audioClipName": "mask_no_separation"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "Rusty. Metalhead. Red. Hell, I'll call you Steve if I have to. Just give me something to—",
+          "customDelay": -1,
+          "audioClipName": "marcus_rusty_steve"
+        },
+        {
+          "speaker": "Mask",
+          "text": "To pretend we are separate? To maintain the illusion of your independence? You may call us whatever comforts you, Marcus. It will not change the truth.",
+          "customDelay": -1,
+          "audioClipName": "mask_illusion"
+        },
+        {
+          "speaker": "Marcus",
+          "text": "And what truth is that?",
+          "customDelay": -1,
+          "audioClipName": "marcus_what_truth"
+        },
+        {
+          "speaker": "Mask",
+          "text": "That you and I are already one. The moment we seated ourselves in your skull, the moment our teeth touched your bone, the moment you chose to let us save you—we became inseparable. Not Marcus. Not the Mask. Just... we.",
+          "customDelay": -1,
+          "audioClipName": "mask_already_one"
+        }
+      ]
+    }
+  ]
+}
