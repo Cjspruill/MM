@@ -22,11 +22,12 @@ public class BloodOrb : MonoBehaviour
     public float randomSpread = 50f;
 
     [Header("Lifetime")]
-    public float lifetime = 10f; // Disappears after 10 seconds
+    public float lifetime = 10f;
 
     private Transform player;
     private BloodSystem playerBloodSystem;
     private ComboController playerComboController;
+    private Animator playerAnimator;
     private InputSystem_Actions controls;
     private bool isAbsorbing = false;
     private float absorptionTimer = 0f;
@@ -45,6 +46,12 @@ public class BloodOrb : MonoBehaviour
             player = playerObj.transform;
             playerBloodSystem = playerObj.GetComponent<BloodSystem>();
             playerComboController = playerObj.GetComponent<ComboController>();
+            playerAnimator = playerObj.GetComponent<Animator>();
+
+            if (playerAnimator == null)
+            {
+                Debug.LogWarning("BloodOrb: Player Animator not found!");
+            }
         }
 
         controls = InputManager.Instance.Controls;
@@ -102,11 +109,12 @@ public class BloodOrb : MonoBehaviour
 
         if (distance <= absorptionRange && !isAbsorbing)
         {
-            // Check if player is blocking - can't absorb while blocking
+            // Check if player is blocking or attacking - can't absorb during combat actions
             bool isPlayerBlocking = playerComboController != null && playerComboController.IsBlocking();
+            bool isPlayerAttacking = playerComboController != null && playerComboController.IsAttacking();
 
             // Check for absorption input (continuous check if button is held)
-            if (controls.Player.Absorb.IsPressed() && !isPlayerBlocking)
+            if (controls.Player.Absorb.IsPressed() && !isPlayerBlocking && !isPlayerAttacking)
             {
                 StartAbsorption();
             }
@@ -151,11 +159,25 @@ public class BloodOrb : MonoBehaviour
             orbCollider.enabled = false;
         }
 
+        // Set animator IsAbsorbing to true
+        if (playerAnimator != null)
+        {
+            playerAnimator.SetBool("IsAbsorbing", true);
+            Debug.Log("Set player IsAbsorbing = true");
+        }
+
         Debug.Log($"Absorbing blood orb: {bloodAmount} blood");
     }
 
     void CompleteAbsorption()
     {
+        // Set animator IsAbsorbing to false
+        if (playerAnimator != null)
+        {
+            playerAnimator.SetBool("IsAbsorbing", false);
+            Debug.Log("Set player IsAbsorbing = false");
+        }
+
         // Give blood to player
         if (playerBloodSystem != null)
         {
@@ -165,6 +187,16 @@ public class BloodOrb : MonoBehaviour
 
         // Destroy orb
         Destroy(gameObject);
+    }
+
+    void OnDestroy()
+    {
+        // Safety: Make sure IsAbsorbing is set to false if orb is destroyed
+        if (isAbsorbing && playerAnimator != null)
+        {
+            playerAnimator.SetBool("IsAbsorbing", false);
+            Debug.Log("BloodOrb destroyed - ensured IsAbsorbing = false");
+        }
     }
 
     void OnDrawGizmosSelected()

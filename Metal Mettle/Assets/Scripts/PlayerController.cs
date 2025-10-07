@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class PlayerController : MonoBehaviour
@@ -17,6 +17,11 @@ public class PlayerController : MonoBehaviour
     public float sprintStopTime = 0.2f; // Can't attack immediately after sprint
     public float jumpHeight = 2f;
     public float gravity = -9.81f;
+
+    [Header("Combat Movement")]
+    public bool allowMovementDuringAttack = false; // Toggle for movement during attacks
+    public bool allowMovementDuringBlock = false; // Toggle for movement during block
+    public float attackMovementSpeedMultiplier = 0.3f; // Slow movement if allowed during attack
 
     private Vector3 velocity;
     private bool isGrounded;
@@ -44,10 +49,38 @@ public class PlayerController : MonoBehaviour
             velocity.y = -2f; // Small downward force to keep grounded
         }
 
-        // Can't move during recovery
-        if (comboController != null && comboController.IsInRecovery())
+        // Check combat state from ComboController
+        bool isAttacking = comboController != null && comboController.IsAttacking();
+        bool isBlocking = comboController != null && comboController.IsBlocking();
+        bool inRecovery = comboController != null && comboController.IsInRecovery();
+
+        // Determine if movement should be blocked
+        bool blockMovement = false;
+        float movementMultiplier = 1f;
+
+        if (isAttacking && !allowMovementDuringAttack)
         {
-            // Apply gravity only
+            blockMovement = true;
+        }
+        else if (isAttacking && allowMovementDuringAttack)
+        {
+            movementMultiplier = attackMovementSpeedMultiplier;
+        }
+
+        if (isBlocking && !allowMovementDuringBlock)
+        {
+            blockMovement = true;
+        }
+
+        // Can't move during recovery (already existed)
+        if (inRecovery)
+        {
+            blockMovement = true;
+        }
+
+        // If movement is blocked, only apply gravity
+        if (blockMovement)
+        {
             velocity.y += gravity * Time.deltaTime;
             controller.Move(velocity * Time.deltaTime);
             return;
@@ -56,9 +89,13 @@ public class PlayerController : MonoBehaviour
         // Get movement input
         Vector2 moveInput = controls.Player.Move.ReadValue<Vector2>();
 
-        // Check if sprinting
-        bool isSprinting = controls.Player.Sprint.IsPressed();
+        // Check if sprinting (can't sprint during attacks/blocks)
+        bool wantsToSprint = controls.Player.Sprint.IsPressed();
+        bool isSprinting = wantsToSprint && !isAttacking && !isBlocking;
+
+        // Calculate current speed
         float currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
+        currentSpeed *= movementMultiplier; // Apply combat multiplier if attacking
 
         // Track sprint state for stop delay
         if (wasSprinting && !isSprinting && !justStoppedSprinting)
@@ -90,12 +127,22 @@ public class PlayerController : MonoBehaviour
         // Move the character
         controller.Move(moveDirection * currentSpeed * Time.deltaTime);
 
-        // Always face camera forward direction
-        Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
-        transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.deltaTime);
+        // Rotation handling
+        if (isAttacking || isBlocking)
+        {
+            // Lock rotation to camera forward during combat
+            Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.deltaTime);
+        }
+        else
+        {
+            // Normal rotation - face camera forward
+            Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.deltaTime);
+        }
 
-        // Jump
-        if (controls.Player.Jump.triggered && isGrounded)
+        // Jump (can't jump during attacks/blocks)
+        if (controls.Player.Jump.triggered && isGrounded && !isAttacking && !isBlocking)
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
         }

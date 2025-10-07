@@ -13,30 +13,30 @@ public class AttackCollider : MonoBehaviour
     public ForceMode forceMode = ForceMode.Impulse;
 
     [Header("References")]
-    public Transform forceOrigin; // Where force comes from (usually player transform)
+    public Transform forceOrigin;
 
     private ComboController comboController;
+    private BloodSystem bloodSystem;
     private HashSet<Collider> hitThisAttack = new HashSet<Collider>();
 
     void Start()
     {
         comboController = GetComponentInParent<ComboController>();
+        bloodSystem = GetComponentInParent<BloodSystem>();
 
         if (forceOrigin == null)
         {
-            forceOrigin = transform.parent; // Default to parent if not set
+            forceOrigin = transform.parent;
         }
     }
 
     void OnEnable()
     {
-        // Clear hit list when attack starts
         ClearHitList();
     }
 
     void OnDisable()
     {
-        // Also clear when disabled (end of attack)
         ClearHitList();
     }
 
@@ -78,7 +78,11 @@ public class AttackCollider : MonoBehaviour
             force *= heavyForceMultiplier;
         }
 
-        Debug.Log($"Attack type: {(isHeavy ? "Heavy" : "Light")}, Damage: {damage}, Force: {force}");
+        // Apply withdrawal damage modifier
+        float damageModifier = bloodSystem != null ? bloodSystem.GetDamageModifier() : 1f;
+        damage *= damageModifier;
+
+        Debug.Log($"Attack type: {(isHeavy ? "Heavy" : "Light")}, Damage: {damage} (modifier: {damageModifier:F2}), Force: {force}");
 
         // Apply hitstun to enemy
         var enemyAI = other.GetComponent<EnemyAI>();
@@ -92,8 +96,9 @@ public class AttackCollider : MonoBehaviour
         var health = other.GetComponent<Health>();
         if (health != null)
         {
-            health.TakeDamage(damage);
-            Debug.Log($"✓ Hit {other.name} for {damage} damage");
+            // PASS isHeavy to TakeDamage so it knows how many orbs to drop!
+            health.TakeDamage(damage, isHeavy);
+            Debug.Log($"✓ Hit {other.name} for {damage} damage ({(isHeavy ? "HEAVY" : "LIGHT")} attack)");
         }
         else
         {
@@ -106,14 +111,23 @@ public class AttackCollider : MonoBehaviour
         if (navAgent != null)
         {
             Debug.Log($"Skipped force on {other.name} - has NavMeshAgent");
-            return; // Exit early, don't apply force
+
+            // Also ensure rigidbody is kinematic if present
+            var rb = other.GetComponent<Rigidbody>();
+            if (rb != null && !rb.isKinematic)
+            {
+                Debug.LogWarning($"{other.name} has NavMeshAgent but non-kinematic Rigidbody! Setting to kinematic.");
+                rb.isKinematic = true;
+            }
+
+            return;
         }
 
-        var rb = other.GetComponent<Rigidbody>();
-        if (rb != null)
+        var rigidBody = other.GetComponent<Rigidbody>();
+        if (rigidBody != null)
         {
             Vector3 forceDirection = (other.transform.position - forceOrigin.position).normalized;
-            rb.AddForce(forceDirection * force, forceMode);
+            rigidBody.AddForce(forceDirection * force, forceMode);
             Debug.Log($"✓ Applied {force} force to {other.name}");
         }
         else
@@ -122,13 +136,11 @@ public class AttackCollider : MonoBehaviour
         }
     }
 
-    // Public method to set damage for specific attacks
     public void SetDamage(float damage)
     {
         baseDamage = damage;
     }
 
-    // Public method to set force for specific attacks
     public void SetForce(float force)
     {
         baseForce = force;
