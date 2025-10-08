@@ -21,7 +21,7 @@ public class ComboController : MonoBehaviour
     public float attackDuration = 0.3f;
     public float attackCooldown = 0.5f;
     public float comboWindow = 10f;
-    public float comboEndCooldown = 0.7f;
+    public float comboEndCooldown = 0.5f;
     public float perfectTimingWindow = 0.3f;
     public float inputBufferTime = 0.2f;
 
@@ -62,9 +62,12 @@ public class ComboController : MonoBehaviour
     private float bufferedInputTime = 0f;
     private int bufferedExpectedComboStep = 0;
 
-    // Store the CURRENT attack's type for hitbox to use
     private bool currentAttackIsHeavy = false;
     private int currentAttackStep = 0;
+    private float nextAttackAllowedTime = 0f;
+
+    // NEW: Track if we're in the process of triggering an attack
+    private bool isProcessingAttack = false;
 
     void Start()
     {
@@ -95,6 +98,7 @@ public class ComboController : MonoBehaviour
         bool attackHeld = controls.Player.Attack.IsPressed();
         bool absorbHeld = controls.Player.Absorb.IsPressed();
 
+        // Handle blocking
         if (blockEnabled && attackHeld && absorbHeld && !isAttacking && !inRecovery)
         {
             if (!isBlocking && !blockStarting)
@@ -112,7 +116,10 @@ public class ComboController : MonoBehaviour
 
         if (isBlocking) return;
 
-        if (hasBufferedInput && canAttack && !inRecovery)
+        bool isLockedOut = Time.time < nextAttackAllowedTime;
+
+        // Process buffered input
+        if (hasBufferedInput && canAttack && !inRecovery && !isLockedOut && !isProcessingAttack)
         {
             float timeSinceBuffer = Time.time - bufferedInputTime;
             if (timeSinceBuffer <= inputBufferTime)
@@ -125,47 +132,52 @@ public class ComboController : MonoBehaviour
                 }
                 else
                 {
-                    DebugLog($"🗑️ Discarding stale buffer");
+                    DebugLog($"🗑️ Discarding stale buffer (expected step {bufferedExpectedComboStep}, now {comboStep})");
                     hasBufferedInput = false;
                 }
                 return;
             }
             else
             {
+                DebugLog($"⏱️ Buffer expired ({timeSinceBuffer:F2}s > {inputBufferTime})");
                 hasBufferedInput = false;
             }
         }
 
+        // Button press detection
         if (controls.Player.Attack.WasPressedThisFrame())
         {
             if (hasBufferedInput)
             {
+                DebugLog("🗑️ Clearing old buffer on new press");
                 hasBufferedInput = false;
             }
 
             buttonPressed = true;
             buttonHoldTime = 0f;
             heavyAttackTriggered = false;
-            DebugLog($">>> BUTTON PRESSED <<< Step:{comboStep}");
+            DebugLog($">>> BUTTON PRESSED <<< Step:{comboStep}, CanAttack:{canAttack}, Recovery:{inRecovery}, LockedOut:{isLockedOut}");
         }
 
+        // Check for heavy attack trigger during hold
         if (buttonPressed && controls.Player.Attack.IsPressed())
         {
             buttonHoldTime += Time.deltaTime;
 
             if (buttonHoldTime >= heavyHoldTime && !heavyAttackTriggered)
             {
-                DebugLog($"🔨 Heavy attack triggered");
+                DebugLog($"🔨 Heavy attack triggered (held {buttonHoldTime:F2}s)");
                 heavyAttackTriggered = true;
                 buttonPressed = false;
                 buttonHoldTime = 0f;
 
-                if (canAttack || comboStep > 0)
+                if ((canAttack && !isLockedOut && !isProcessingAttack) || (comboStep > 0 && !inRecovery && !isProcessingAttack))
                 {
                     TriggerAttack(true);
                 }
                 else
                 {
+                    DebugLog($"📦 Buffering heavy (CanAttack:{canAttack}, LockedOut:{isLockedOut}, Step:{comboStep}, Recovery:{inRecovery})");
                     hasBufferedInput = true;
                     bufferedIsHeavy = true;
                     bufferedInputTime = Time.time;
@@ -174,9 +186,10 @@ public class ComboController : MonoBehaviour
             }
         }
 
+        // Button release - trigger light attack
         if (controls.Player.Attack.WasReleasedThisFrame())
         {
-            DebugLog($">>> RELEASED <<< HeavyTriggered:{heavyAttackTriggered}");
+            DebugLog($">>> RELEASED <<< HeavyTriggered:{heavyAttackTriggered}, HoldTime:{buttonHoldTime:F2}s");
 
             if (heavyAttackTriggered)
             {
@@ -192,12 +205,13 @@ public class ComboController : MonoBehaviour
 
                 if (buttonHoldTime < heavyHoldTime)
                 {
-                    if (canAttack || comboStep > 0)
+                    if ((canAttack && !isLockedOut && !isProcessingAttack) || (comboStep > 0 && !inRecovery && !isProcessingAttack))
                     {
                         TriggerAttack(false);
                     }
                     else
                     {
+                        DebugLog($"📦 Buffering light (CanAttack:{canAttack}, LockedOut:{isLockedOut}, Step:{comboStep}, Recovery:{inRecovery})");
                         hasBufferedInput = true;
                         bufferedIsHeavy = false;
                         bufferedInputTime = Time.time;
@@ -207,37 +221,61 @@ public class ComboController : MonoBehaviour
             }
         }
 
-        if (Time.time - lastAttackTime > comboWindow && comboStep > 0 && !isAttacking)
+        // FIXED: More comprehensive combo timeout protection
+        // Don't timeout if: attacking, has buffered input, or currently processing an attack
+        bool safeToTimeout = !isAttacking && !hasBufferedInput && !isProcessingAttack && !waitingForAnimationComplete;
+
+        if (Time.time - lastAttackTime > comboWindow && comboStep > 0 && safeToTimeout)
         {
-            DebugLog($"Combo window expired");
+            DebugLog($"⏱️ Combo window expired ({Time.time - lastAttackTime:F2}s > {comboWindow})");
             ResetCombo();
         }
     }
 
     void TriggerAttack(bool isHeavy)
     {
-        DebugLog($"=== TriggerAttack === Heavy:{isHeavy}, Step:{comboStep}, IsHeavyCombo:{isHeavyCombo}");
+        // NEW: Prevent simultaneous attack triggers
+        if (isProcessingAttack)
+        {
+            DebugLog($"⚠️ Already processing an attack, ignoring trigger");
+            return;
+        }
+
+        isProcessingAttack = true;
+
+        DebugLog($"=== TriggerAttack === Heavy:{isHeavy}, Step:{comboStep}, IsHeavyCombo:{isHeavyCombo}, TimeSinceLastAttack:{Time.time - lastAttackTime:F2}s");
+
+        if (Time.time < nextAttackAllowedTime)
+        {
+            DebugLog($"❌ Attack locked out for {(nextAttackAllowedTime - Time.time):F2}s more");
+            isProcessingAttack = false;
+            return;
+        }
 
         if (!canAttack && comboStep == 0)
         {
+            DebugLog("❌ Cannot attack - not ready for first attack");
+            isProcessingAttack = false;
             return;
         }
 
         if (comboStep == 0 && inRecovery)
         {
+            DebugLog("❌ Cannot attack - in recovery");
+            isProcessingAttack = false;
             return;
         }
 
-        // CHECK blood cost but don't drain yet - drain when hitbox activates
+        // Check blood cost
         if (bloodSystem != null)
         {
             float bloodCost = isHeavy ? 3f : 2f;
             if (bloodSystem.currentBlood < bloodCost)
             {
                 DebugLog($"❌ Not enough blood! Need {bloodCost}, have {bloodSystem.currentBlood}");
+                isProcessingAttack = false;
                 return;
             }
-            // Blood will be drained in ActivateHitbox()
         }
 
         if (comboStep == 0)
@@ -253,6 +291,8 @@ public class ComboController : MonoBehaviour
             {
                 if (!allowMixedCombos)
                 {
+                    DebugLog("❌ Cannot mix attack types");
+                    isProcessingAttack = false;
                     return;
                 }
                 else if (isHeavy && !isHeavyCombo)
@@ -262,10 +302,15 @@ public class ComboController : MonoBehaviour
                 }
                 else if (!isHeavy && isHeavyCombo)
                 {
+                    DebugLog("❌ Cannot go heavy to light");
+                    isProcessingAttack = false;
                     return;
                 }
             }
         }
+
+        // NEW: Store previous combo step for validation
+        int previousComboStep = comboStep;
 
         comboStep++;
 
@@ -281,35 +326,43 @@ public class ComboController : MonoBehaviour
 
         if (comboStep > maxCombo)
         {
-            DebugLog($"🎯 Exceeded max!");
+            DebugLog($"🎯 Combo exceeded max ({comboStep} > {maxCombo})! Ending combo.");
+            comboStep = maxCombo;
+            isProcessingAttack = false;
             EndCombo();
             return;
         }
 
-        DebugLog($"⚔️ Attack {comboStep}/{maxCombo} - IsHeavyCombo:{isHeavyCombo}");
+        DebugLog($"⚔️ Attack {comboStep}/{maxCombo} - IsHeavyCombo:{isHeavyCombo} (was step {previousComboStep})");
 
         float speedModifier = bloodSystem != null ? bloodSystem.GetAttackSpeedModifier() : 1f;
         float adjustedCooldown = attackCooldown / speedModifier;
         float adjustedRecovery = (isHeavy ? heavyRecovery : lightRecovery) / speedModifier;
 
-        if (animator != null)
-        {
-            animator.SetTrigger("AttackTrigger");
-            animator.SetInteger("ComboStep", comboStep);
-            animator.SetBool("IsHeavy", isHeavyCombo);
-            animator.SetFloat("AttackSpeed", speedModifier);
-            animator.speed = speedModifier;
-        }
-
+        // NEW: Set all critical state BEFORE animator to prevent race conditions
         isAttacking = true;
         waitingForAnimationComplete = true;
         canAttack = false;
         lastAttackTime = Time.time;
 
-        // STORE the current attack's type and step for hitbox to use later
         currentAttackIsHeavy = isHeavyCombo;
         currentAttackStep = comboStep;
-        DebugLog($"   STORED: currentAttackIsHeavy={currentAttackIsHeavy}, currentAttackStep={currentAttackStep}");
+
+        DebugLog($"   STATE SET: isAttacking={isAttacking}, lastAttackTime={lastAttackTime}, step={comboStep}");
+
+        if (animator != null)
+        {
+            // Clear any pending triggers first
+            animator.ResetTrigger("AttackTrigger");
+
+            animator.SetTrigger("AttackTrigger");
+            animator.SetInteger("ComboStep", comboStep);
+            animator.SetBool("IsHeavy", isHeavyCombo);
+            animator.SetFloat("AttackSpeed", speedModifier);
+            animator.speed = speedModifier;
+
+            DebugLog($"   ANIMATOR: Trigger set, Step={comboStep}, IsHeavy={isHeavyCombo}, Speed={speedModifier}");
+        }
 
         if (!useAnimationEvents)
         {
@@ -321,20 +374,34 @@ public class ComboController : MonoBehaviour
             Invoke(nameof(ForceDeactivateHitbox), 2f);
         }
 
-        float comboInputWindow = adjustedCooldown * 0.3f;
+        float comboInputWindow = Mathf.Max(0.2f, adjustedCooldown * 0.4f);
         Invoke(nameof(EnableNextAttack), comboInputWindow);
 
         inRecovery = true;
         float totalRecovery = adjustedCooldown + adjustedRecovery;
         Invoke(nameof(EndRecovery), totalRecovery);
+
+        // NEW: Clear processing flag after a short delay to allow animation to start
+        Invoke(nameof(ClearProcessingFlag), 0.1f);
+    }
+
+    void ClearProcessingFlag()
+    {
+        isProcessingAttack = false;
+        DebugLog($"   Processing flag cleared");
     }
 
     public void ActivateHitbox()
     {
         DebugLog($"🗡️ HITBOX ON - STORED: Step:{currentAttackStep}, IsHeavy:{currentAttackIsHeavy}");
-        DebugLog($"   (Current combo state: Step:{comboStep}, IsHeavyCombo:{isHeavyCombo})");
 
-        // DRAIN BLOOD NOW - when hitbox actually activates
+        if (currentAttackStep <= 0 || currentAttackStep > maxLightCombo)
+        {
+            Debug.LogWarning($"⚠️ Invalid stored attack step: {currentAttackStep}!");
+            currentAttackStep = comboStep;
+            currentAttackIsHeavy = isHeavyCombo;
+        }
+
         if (bloodSystem != null)
         {
             float bloodCost = currentAttackIsHeavy ? 3f : 2f;
@@ -352,21 +419,16 @@ public class ComboController : MonoBehaviour
         if (debugRenderer && showDebugHitbox)
         {
             debugRenderer.enabled = true;
-
-            // Use STORED attack type, not current combo state
             Color[] colors = currentAttackIsHeavy ? heavyColors : lightColors;
             int colorIndex = Mathf.Clamp(currentAttackStep - 1, 0, colors.Length - 1);
             Color selectedColor = colors[colorIndex];
-
             debugRenderer.material.color = selectedColor;
-
-            DebugLog($"   Color: {(currentAttackIsHeavy ? "HEAVY" : "LIGHT")}[{colorIndex}] = {selectedColor}");
         }
     }
 
     public void DeactivateHitbox()
     {
-        DebugLog($"🛡️ HITBOX OFF - Step:{comboStep}, IsHeavyCombo:{isHeavyCombo}");
+        DebugLog($"🛡️ HITBOX OFF - Step:{comboStep}");
 
         if (attackHitbox) attackHitbox.enabled = false;
         if (debugRenderer) debugRenderer.enabled = false;
@@ -384,19 +446,21 @@ public class ComboController : MonoBehaviour
     void EnableNextAttack()
     {
         canAttack = true;
-        DebugLog($"✓ Window OPEN");
+        DebugLog($"✓ Window OPEN (Step:{comboStep})");
     }
 
     void EndRecovery()
     {
         inRecovery = false;
+        DebugLog($"✓ Recovery ended (Step:{comboStep})");
     }
 
     void ResetCombo()
     {
-        if (isAttacking)
+        // NEW: Additional safety checks
+        if (isAttacking || isProcessingAttack || waitingForAnimationComplete)
         {
-            DebugLog($"⚠️ Preventing reset - still attacking!");
+            DebugLog($"⚠️ Preventing reset - state locked (attacking:{isAttacking}, processing:{isProcessingAttack}, waiting:{waitingForAnimationComplete})");
             return;
         }
 
@@ -408,6 +472,12 @@ public class ComboController : MonoBehaviour
         heavyAttackTriggered = false;
         buttonPressed = false;
         isAttacking = false;
+        canAttack = true;
+        currentAttackStep = 0;
+        currentAttackIsHeavy = false;
+        isProcessingAttack = false;
+
+        nextAttackAllowedTime = 0f;
 
         if (animator != null)
         {
@@ -418,14 +488,14 @@ public class ComboController : MonoBehaviour
 
     void EndCombo()
     {
-        if (isAttacking)
+        if (isAttacking || isProcessingAttack)
         {
-            DebugLog($"⚠️ Delaying EndCombo - still attacking!");
+            DebugLog($"⚠️ Delaying EndCombo - still attacking or processing!");
             Invoke(nameof(EndCombo), 0.2f);
             return;
         }
 
-        DebugLog($"🏁 Combo Ended (step {comboStep}, {(isHeavyCombo ? "HEAVY" : "LIGHT")})");
+        DebugLog($"🏁 Combo Ended (step {comboStep})");
 
         comboStep = 0;
         isHeavyCombo = false;
@@ -434,6 +504,10 @@ public class ComboController : MonoBehaviour
         hasBufferedInput = false;
         heavyAttackTriggered = false;
         buttonPressed = false;
+        canAttack = false;
+        currentAttackStep = 0;
+        currentAttackIsHeavy = false;
+        isProcessingAttack = false;
 
         if (attackHitbox) attackHitbox.enabled = false;
         if (debugRenderer) debugRenderer.enabled = false;
@@ -444,11 +518,20 @@ public class ComboController : MonoBehaviour
             animator.SetBool("IsHeavy", false);
         }
 
-        Invoke(nameof(EnableNextAttack), comboEndCooldown);
+        nextAttackAllowedTime = Time.time + comboEndCooldown;
+        canAttack = true;
+
+        DebugLog($"🔒 Combo end cooldown: {comboEndCooldown}s");
     }
 
     void StartBlocking()
     {
+        if (comboStep > 0)
+        {
+            DebugLog("Blocking - resetting combo");
+            ResetCombo();
+        }
+
         blockStarting = true;
         isBlocking = true;
         Invoke(nameof(ActivateBlock), blockStartupTime);
@@ -496,20 +579,37 @@ public class ComboController : MonoBehaviour
     public bool IsInRecovery() => inRecovery;
     public bool IsAttacking() => isAttacking;
 
+    public void ForceResetCombo()
+    {
+        DebugLog("🔄 FORCED RESET (external call)");
+        ResetCombo();
+    }
+
     void OnGUI()
     {
         if (!enableDebugLogs) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 300, 200));
+        GUILayout.BeginArea(new Rect(10, 10, 400, 280));
         GUILayout.Label($"Combo: {comboStep} ({(isHeavyCombo ? "HEAVY" : "LIGHT")})");
         GUILayout.Label($"Can Attack: {canAttack}");
         GUILayout.Label($"Attacking: {isAttacking}");
+        GUILayout.Label($"Processing: {isProcessingAttack}");
+        GUILayout.Label($"Waiting Anim: {waitingForAnimationComplete}");
         GUILayout.Label($"Recovery: {inRecovery}");
+        GUILayout.Label($"Time Since Last: {Time.time - lastAttackTime:F2}s / {comboWindow}s");
+
+        float lockoutRemaining = Mathf.Max(0, nextAttackAllowedTime - Time.time);
+        if (lockoutRemaining > 0)
+        {
+            GUI.color = Color.red;
+            GUILayout.Label($"🔒 LOCKED: {lockoutRemaining:F2}s");
+            GUI.color = Color.white;
+        }
 
         if (hasBufferedInput)
         {
             GUI.color = Color.cyan;
-            GUILayout.Label($"BUFFERED: {(bufferedIsHeavy ? "H" : "L")}");
+            GUILayout.Label($"BUFFERED: {(bufferedIsHeavy ? "H" : "L")} (Step {bufferedExpectedComboStep})");
             GUI.color = Color.white;
         }
 

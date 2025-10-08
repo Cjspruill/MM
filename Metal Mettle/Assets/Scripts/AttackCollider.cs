@@ -84,6 +84,16 @@ public class AttackCollider : MonoBehaviour
 
         Debug.Log($"Attack type: {(isHeavy ? "Heavy" : "Light")}, Damage: {damage} (modifier: {damageModifier:F2}), Force: {force}");
 
+        // Calculate attack direction FIRST (before applying damage/force)
+        Vector3 attackDirection = (other.transform.position - forceOrigin.position).normalized;
+
+        // Record attack info on enemy ragdoll controller (for death physics)
+        var ragdollController = other.GetComponent<EnemyRagdollController>();
+        if (ragdollController != null)
+        {
+            ragdollController.RecordAttack(attackDirection, isHeavy);
+        }
+
         // Apply hitstun to enemy
         var enemyAI = other.GetComponent<EnemyAI>();
         if (enemyAI != null)
@@ -126,8 +136,7 @@ public class AttackCollider : MonoBehaviour
         var rigidBody = other.GetComponent<Rigidbody>();
         if (rigidBody != null)
         {
-            Vector3 forceDirection = (other.transform.position - forceOrigin.position).normalized;
-            rigidBody.AddForce(forceDirection * force, forceMode);
+            rigidBody.AddForce(attackDirection * force, forceMode);
             Debug.Log($"✓ Applied {force} force to {other.name}");
         }
         else

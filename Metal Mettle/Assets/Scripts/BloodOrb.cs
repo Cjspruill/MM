@@ -159,6 +159,14 @@ public class BloodOrb : MonoBehaviour
             orbCollider.enabled = false;
         }
 
+        // Reset player's combo when absorbing
+        if (playerComboController != null && playerComboController.GetComboStep() > 0)
+        {
+            Debug.Log("Absorption started - resetting player combo");
+            // We can't directly call ResetCombo from here, but we can let the combo naturally expire
+            // The combo window will handle the reset
+        }
+
         // Set animator IsAbsorbing to true
         if (playerAnimator != null)
         {

@@ -6,6 +6,7 @@ public class PlayerController : MonoBehaviour
     [Header("References")]
     public Transform cameraTransform;
     private CharacterController controller;
+    private Animator animator;
     private InputSystem_Actions controls;
     public BloodSystem bloodSystem;
     public ComboController comboController;
@@ -13,30 +14,47 @@ public class PlayerController : MonoBehaviour
     [Header("Movement Settings")]
     public float moveSpeed = 5f;
     public float sprintSpeed = 8f;
-    public float sprintBloodCost = 0.5f; // Blood drained per second while sprinting
-    public float sprintStopTime = 0.2f; // Can't attack immediately after sprint
+    public float sprintBloodCost = 0.5f;
+    public float sprintStopTime = 0.2f;
     public float jumpHeight = 2f;
     public float gravity = -9.81f;
 
+    [Header("Animation Settings")]
+    public float animationSmoothTime = 0.1f; // How quickly animation values interpolate
+    public float walkAnimationValue = 0.5f; // Animation value for walking
+    public float sprintAnimationValue = 1f; // Animation value for sprinting
+
     [Header("Combat Movement")]
-    public bool allowMovementDuringAttack = false; // Toggle for movement during attacks
-    public bool allowMovementDuringBlock = false; // Toggle for movement during block
-    public float attackMovementSpeedMultiplier = 0.3f; // Slow movement if allowed during attack
+    public bool allowMovementDuringAttack = false;
+    public bool allowMovementDuringBlock = false;
+    public float attackMovementSpeedMultiplier = 0.3f;
 
     private Vector3 velocity;
     private bool isGrounded;
     private bool justStoppedSprinting = false;
     private bool wasSprinting = false;
 
+    // Animation smoothing
+    private float currentAnimSpeed; // Direction Y (forward/back)
+    private float currentAnimDirection; // Direction X (left/right strafe)
+    private float animSpeedVelocity;
+    private float animDirectionVelocity;
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
+        animator = GetComponent<Animator>();
         controls = InputManager.Instance.Controls;
         controls.Enable();
 
         if (cameraTransform == null)
         {
             cameraTransform = Camera.main.transform;
+        }
+
+        if (animator == null)
+        {
+            Debug.LogError("Animator component not found on " + gameObject.name);
         }
     }
 
@@ -46,7 +64,7 @@ public class PlayerController : MonoBehaviour
         isGrounded = controller.isGrounded;
         if (isGrounded && velocity.y < 0)
         {
-            velocity.y = -2f; // Small downward force to keep grounded
+            velocity.y = -2f;
         }
 
         // Check combat state from ComboController
@@ -72,32 +90,32 @@ public class PlayerController : MonoBehaviour
             blockMovement = true;
         }
 
-        // Can't move during recovery (already existed)
         if (inRecovery)
         {
             blockMovement = true;
         }
 
-        // If movement is blocked, only apply gravity
+        // Get movement input
+        Vector2 moveInput = controls.Player.Move.ReadValue<Vector2>();
+
+        // If movement is blocked, smoothly return animation values to zero
         if (blockMovement)
         {
+            UpdateAnimationParameters(0f, 0f);
             velocity.y += gravity * Time.deltaTime;
             controller.Move(velocity * Time.deltaTime);
             return;
         }
 
-        // Get movement input
-        Vector2 moveInput = controls.Player.Move.ReadValue<Vector2>();
-
-        // Check if sprinting (can't sprint during attacks/blocks)
+        // Check if sprinting
         bool wantsToSprint = controls.Player.Sprint.IsPressed();
-        bool isSprinting = wantsToSprint && !isAttacking && !isBlocking;
+        bool isSprinting = wantsToSprint && !isAttacking && !isBlocking && moveInput.magnitude > 0.1f;
 
         // Calculate current speed
         float currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
-        currentSpeed *= movementMultiplier; // Apply combat multiplier if attacking
+        currentSpeed *= movementMultiplier;
 
-        // Track sprint state for stop delay
+        // Track sprint state
         if (wasSprinting && !isSprinting && !justStoppedSprinting)
         {
             justStoppedSprinting = true;
@@ -105,7 +123,7 @@ public class PlayerController : MonoBehaviour
         }
         wasSprinting = isSprinting;
 
-        // Drain blood while sprinting and moving
+        // Drain blood while sprinting
         if (isSprinting && moveInput.magnitude > 0.1f && bloodSystem != null)
         {
             bloodSystem.DrainBlood(sprintBloodCost * Time.deltaTime);
@@ -115,33 +133,45 @@ public class PlayerController : MonoBehaviour
         Vector3 cameraForward = cameraTransform.forward;
         Vector3 cameraRight = cameraTransform.right;
 
-        // Flatten camera directions (ignore Y component)
         cameraForward.y = 0f;
         cameraRight.y = 0f;
         cameraForward.Normalize();
         cameraRight.Normalize();
 
-        // Calculate move direction
         Vector3 moveDirection = (cameraForward * moveInput.y + cameraRight * moveInput.x).normalized;
 
         // Move the character
-        controller.Move(moveDirection * currentSpeed * Time.deltaTime);
-
-        // Rotation handling
-        if (isAttacking || isBlocking)
+        if (moveInput.magnitude > 0.1f)
         {
-            // Lock rotation to camera forward during combat
+            controller.Move(moveDirection * currentSpeed * Time.deltaTime);
+        }
+
+        // Calculate animation values based on input and sprint state
+        float animValue = isSprinting ? sprintAnimationValue : walkAnimationValue;
+
+        float targetSpeed = 0f; // Speed (forward/back - Y axis)
+        float targetDirection = 0f; // Direction (left/right strafe - X axis)
+
+        if (moveInput.magnitude > 0.1f)
+        {
+            // Speed = forward/backward movement (Y input)
+            targetSpeed = moveInput.y * animValue;
+
+            // Direction = left/right strafe (X input)
+            targetDirection = moveInput.x * animValue;
+        }
+
+        // Update animation parameters
+        UpdateAnimationParameters(targetSpeed, targetDirection);
+
+        // Rotation - always face camera forward
+        if (cameraForward.magnitude > 0.01f)
+        {
             Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.deltaTime);
         }
-        else
-        {
-            // Normal rotation - face camera forward
-            Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.deltaTime);
-        }
 
-        // Jump (can't jump during attacks/blocks)
+        // Jump
         if (controls.Player.Jump.triggered && isGrounded && !isAttacking && !isBlocking)
         {
             velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
@@ -150,6 +180,30 @@ public class PlayerController : MonoBehaviour
         // Apply gravity
         velocity.y += gravity * Time.deltaTime;
         controller.Move(velocity * Time.deltaTime);
+    }
+
+    void UpdateAnimationParameters(float targetSpeed, float targetDirection)
+    {
+        if (animator == null) return;
+
+        // Smoothly interpolate to target values
+        currentAnimSpeed = Mathf.SmoothDamp(
+            currentAnimSpeed,
+            targetSpeed,
+            ref animSpeedVelocity,
+            animationSmoothTime
+        );
+
+        currentAnimDirection = Mathf.SmoothDamp(
+            currentAnimDirection,
+            targetDirection,
+            ref animDirectionVelocity,
+            animationSmoothTime
+        );
+
+        // Set animator parameters
+        animator.SetFloat("Speed", currentAnimSpeed);      // Y-axis (forward/back)
+        animator.SetFloat("Direction", currentAnimDirection); // X-axis (left/right)
     }
 
     void AllowActions()

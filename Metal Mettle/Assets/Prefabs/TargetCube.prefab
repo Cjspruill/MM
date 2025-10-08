@@ -50,7 +50,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2453421501787380447}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 1
   m_DynamicOccludee: 1
@@ -251,7 +251,7 @@ MonoBehaviour:
   maxHealth: 100
   currentHealth: 0
   destroyOnDeath: 1
-  destroyDelay: 2
+  destroyDelay: 0
   bloodOrbPrefab: {fileID: 6296041413833235312, guid: 4741c4d215dc3fe4bb1097bcf0c32e69, type: 3}
   dropBloodOnHit: 1
   dropBloodOnDeath: 1
@@ -310,12 +310,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   player: {fileID: 0}
   chaseSpeed: 3.5
-  stoppingDistance: 2
+  stoppingDistance: 1
   detectionRange: 15
   alwaysChase: 1
   attackHitbox: {fileID: 2364559415378321056}
   debugRenderer: {fileID: 8616070966033831613}
-  attackRange: 2.5
+  attackRange: 1.5
   attackDuration: 0.3
   minComboAttacks: 1
   maxComboAttacks: 3
@@ -323,7 +323,7 @@ MonoBehaviour:
   comboCooldown: 2
   attackWindupTime: 0.3
   baseHitstunDuration: 0.4
-  showDebug: 1
+  showDebug: 0
 --- !u!195 &3447008059731664867
 NavMeshAgent:
   m_ObjectHideFlags: 0

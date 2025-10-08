@@ -201,6 +201,7 @@ public class EnemyAI : MonoBehaviour
         // Show telegraph during windup
         if (debugRenderer != null)
         {
+            if(showDebug)
             debugRenderer.enabled = true;
         }
 
@@ -237,6 +238,7 @@ public class EnemyAI : MonoBehaviour
         // Disable debug renderer
         if (debugRenderer != null)
         {
+            if(showDebug)
             debugRenderer.enabled = false;
         }
 
