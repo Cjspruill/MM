@@ -187,20 +187,32 @@ public class BloodSiphonEffect : MonoBehaviour
         particleObj.transform.position = spawnPosition;
         particleObj.transform.localScale = Vector3.one * particleSize;
 
-        // Remove collider
-        Destroy(particleObj.GetComponent<Collider>());
+        // IMPORTANT: Remove collider IMMEDIATELY to prevent physics interactions
+        Collider collider = particleObj.GetComponent<Collider>();
+        if (collider != null)
+        {
+            DestroyImmediate(collider); // Use DestroyImmediate instead of Destroy
+        }
+
+        // Also remove any Rigidbody if present
+        Rigidbody rb = particleObj.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            DestroyImmediate(rb);
+        }
+
+        // Put particles on a separate layer that doesn't collide with player
+        particleObj.layer = LayerMask.NameToLayer("Ignore Raycast"); // Or create a custom "BloodParticles" layer
 
         // Set material
         Renderer renderer = particleObj.GetComponent<Renderer>();
 
         if (particleMaterial != null)
         {
-            // Use assigned material
             renderer.material = particleMaterial;
         }
         else
         {
-            // Fallback: try to create a simple material
             Debug.LogWarning("BloodSiphonEffect: No particle material assigned! Please create and assign a material.");
             Shader shader = Shader.Find("Unlit/Color");
             if (shader != null)
@@ -226,7 +238,6 @@ public class BloodSiphonEffect : MonoBehaviour
 
         stream.particles.Add(particle);
     }
-
     private void UpdateParticle(BloodParticle particle)
     {
         particle.lifetime += Time.deltaTime;

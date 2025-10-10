@@ -284,48 +284,79 @@ public class ComboController : MonoBehaviour
             }
         }
 
+        // Store whether this was a heavy combo BEFORE we potentially change it
+        bool wasHeavyCombo = isHeavyCombo;
+
         if (comboStep == 0)
         {
+            // Starting a new combo - set the type
             isHeavyCombo = isHeavy;
             DebugLog($"🆕 Starting {(isHeavy ? "HEAVY" : "LIGHT")} combo");
         }
         else
         {
+            // Continuing a combo
             bool tryingToMix = isHeavy != isHeavyCombo;
+
+            DebugLog($"   Continuing combo: isHeavy={isHeavy}, wasHeavyCombo={wasHeavyCombo}, tryingToMix={tryingToMix}");
 
             if (tryingToMix)
             {
+                // Player is trying to switch attack types mid-combo
                 if (!allowMixedCombos)
                 {
-                    DebugLog("❌ Cannot mix attack types");
+                    DebugLog("❌ Cannot mix attack types (allowMixedCombos is false)");
                     isProcessingAttack = false;
                     return;
                 }
                 else if (isHeavy && !isHeavyCombo)
                 {
-                    DebugLog($"💥 Heavy finisher!");
-                    isHeavyCombo = true;
+                    // Light combo → Heavy finisher (ALLOWED)
+                    DebugLog($"💥 Heavy finisher! Switching from light to heavy");
+                    // DON'T SET isHeavyCombo = true yet, we need the old value for max combo calculation
                 }
                 else if (!isHeavy && isHeavyCombo)
                 {
+                    // Heavy → Light (NOT ALLOWED)
                     DebugLog("❌ Cannot go heavy to light");
                     isProcessingAttack = false;
                     return;
                 }
             }
+            // If NOT trying to mix (same type as combo), just continue - no extra checks needed
         }
 
         int previousComboStep = comboStep;
         comboStep++;
 
+        // Determine max combo based on ORIGINAL combo type (BEFORE we changed isHeavyCombo)
         int maxCombo;
-        if (allowMixedCombos && isHeavyCombo && comboStep > maxHeavyCombo)
+
+        // If we just switched to heavy (mixed combo finisher)
+        // Use wasHeavyCombo instead of isHeavyCombo to check the original state
+        bool justSwitchedToHeavy = isHeavy && !wasHeavyCombo && allowMixedCombos && previousComboStep > 0;
+
+        DebugLog($"   Max combo calculation: justSwitchedToHeavy={justSwitchedToHeavy}, wasHeavyCombo={wasHeavyCombo}, step={comboStep}");
+
+        if (justSwitchedToHeavy)
         {
+            // Light→Light→Heavy: use light max since we started as light combo
             maxCombo = maxLightCombo;
+            DebugLog($"   💥 Heavy finisher on light combo - using light max ({maxLightCombo})");
+            // NOW we can set isHeavyCombo for the animation system
+            isHeavyCombo = true;
+        }
+        else if (wasHeavyCombo)
+        {
+            // Pure heavy combo (or was already heavy)
+            maxCombo = maxHeavyCombo;
+            DebugLog($"   Using heavy max ({maxHeavyCombo})");
         }
         else
         {
-            maxCombo = isHeavyCombo ? maxHeavyCombo : maxLightCombo;
+            // Pure light combo
+            maxCombo = maxLightCombo;
+            DebugLog($"   Using light max ({maxLightCombo})");
         }
 
         if (comboStep > maxCombo)
@@ -353,7 +384,7 @@ public class ComboController : MonoBehaviour
 
         DebugLog($"   STATE SET: isAttacking={isAttacking}, lastAttackTime={lastAttackTime}, step={comboStep}");
 
-        // NEW: Play specific animation state with smooth crossfade
+        // Play specific animation state with smooth crossfade
         if (animator != null)
         {
             string stateName = GetAttackStateName(isHeavyCombo, comboStep);
@@ -401,8 +432,11 @@ public class ComboController : MonoBehaviour
         if (isHeavy)
         {
             int index = step - 1;
+            // Clamp to available animations - for heavy finisher on step 3, use last heavy animation
+            index = Mathf.Min(index, heavyAttackStates.Length - 1);
             if (index >= 0 && index < heavyAttackStates.Length)
             {
+                DebugLog($"   Getting heavy animation: index={index}, state={heavyAttackStates[index]}");
                 return heavyAttackStates[index];
             }
         }
@@ -411,10 +445,12 @@ public class ComboController : MonoBehaviour
             int index = step - 1;
             if (index >= 0 && index < lightAttackStates.Length)
             {
+                DebugLog($"   Getting light animation: index={index}, state={lightAttackStates[index]}");
                 return lightAttackStates[index];
             }
         }
 
+        Debug.LogError($"❌ No animation found for isHeavy={isHeavy}, step={step}!");
         return null;
     }
 
@@ -648,52 +684,38 @@ public class ComboController : MonoBehaviour
 }
 
 /*
-=== KEY CHANGES ===
+=== THE CRITICAL FIX - Lines 271-345 ===
 
-1. DIRECT STATE CONTROL:
-   - Uses animator.Play(stateName) instead of triggers
-   - Forces animator to specific state immediately
-   - No more missed triggers or timing issues
+THE BUG:
+When doing Light→Light→Heavy, the code was setting isHeavyCombo = true
+BEFORE checking justSwitchedToHeavy, so the check (!isHeavyCombo) was always false.
 
-2. STATE NAME ARRAYS:
-   - lightAttackStates[] = exact animation state names
-   - heavyAttackStates[] = exact animation state names
-   - GetAttackStateName() returns correct state for combo step
+THE FIX:
+1. Store original value: bool wasHeavyCombo = isHeavyCombo
+2. Don't set isHeavyCombo = true when detecting heavy finisher (yet)
+3. Use wasHeavyCombo to calculate justSwitchedToHeavy
+4. Set isHeavyCombo = true AFTER determining max combo
 
-3. HOW IT WORKS:
-   - Combo step 1 (light) → plays "JAB"
-   - Combo step 2 (light) → plays "CROSS"
-   - Combo step 3 (light) → plays "LEAD UPPERCUT"
-   - Combo step 1 (heavy) → plays "RIGHT STRAIT KNEE"
-   - Combo step 2 (heavy) → plays "ROUNDHOUSE KICK"
+NOW IT WORKS:
+- Light (step 1): wasHeavyCombo = false
+- Light (step 2): wasHeavyCombo = false  
+- Heavy (step 3): isHeavy=true, wasHeavyCombo=false → justSwitchedToHeavy=true
+  → Uses maxLightCombo (3) → ALLOWED!
 
-4. REMOVED ANIMATOR PARAMETERS:
-   - No more ComboStep, IsHeavy, AttackTrigger parameters needed
-   - Only AttackSpeed and IsBlocking remain
-   - Much simpler animator setup
+=== WHAT YOU'LL SEE IN DEBUG ===
 
-=== SETUP INSTRUCTIONS ===
+When doing Tap→Tap→Hold:
+[Combo] === TriggerAttack === Heavy:true, Step:2, IsHeavyCombo:false
+[Combo]    Continuing combo: isHeavy=true, wasHeavyCombo=false, tryingToMix=true
+[Combo] 💥 Heavy finisher! Switching from light to heavy
+[Combo]    Max combo calculation: justSwitchedToHeavy=true, wasHeavyCombo=false, step=3
+[Combo]    💥 Heavy finisher on light combo - using light max (3)
+[Combo] ⚔️ Attack 3/3 - IsHeavyCombo:true
 
-1. In Inspector, set the state names EXACTLY as they appear in your animator:
-   - Light Attack States[0] = "JAB"
-   - Light Attack States[1] = "CROSS"
-   - Light Attack States[2] = "LEAD UPPERCUT"
-   - Heavy Attack States[0] = "RIGHT STRAIT KNEE"
-   - Heavy Attack States[1] = "ROUNDHOUSE KICK"
-
-2. Make sure these states are in your animator (case-sensitive!)
-
-3. The script will now force-play these states directly, bypassing triggers
-
-4. Debug GUI will show the current state name in yellow
-
-=== BENEFITS ===
-
-✓ No missed triggers
-✓ No timing issues
-✓ Direct control over animation
-✓ Guaranteed correct state plays
-✓ Easier to debug (see state name on screen)
-✓ More reliable combo flow
+=== INSPECTOR SETTINGS ===
+- allowMixedCombos = TRUE (must be enabled!)
+- maxLightCombo = 3
+- maxHeavyCombo = 2
+- heavyHoldTime = 0.3
 
 */

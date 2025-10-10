@@ -327,6 +327,12 @@ public class BloodOrb : MonoBehaviour
     {
         if (isAbsorbing) return;
 
+        if (orbCollider != null)
+        {
+            orbCollider.enabled = false;
+            Debug.Log("Blood orb collider disabled during absorption");
+        }
+
         isAbsorbing = true;
         absorptionTimer = 0f;
         startPosition = transform.position;
@@ -343,11 +349,6 @@ public class BloodOrb : MonoBehaviour
             rb.isKinematic = true;
         }
 
-        if (orbCollider != null)
-        {
-            orbCollider.enabled = false;
-            Debug.Log("Blood orb collider disabled during absorption");
-        }
 
         // FORCE IMMEDIATE ANIMATION - plays NOW with smooth crossfade, loops continuously
         if (playerAnimator != null)

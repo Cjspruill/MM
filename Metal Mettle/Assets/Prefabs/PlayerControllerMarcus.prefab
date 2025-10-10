@@ -10935,7 +10935,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 4120
+  m_VersionIndex: 4141
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -12731,8 +12731,16 @@ MonoBehaviour:
   blockVisual: {fileID: 60657931445366010}
   blockStartupTime: 0.25
   blockRecovery: 0.75
+  lightAttackStates:
+  - JAB
+  - CROSS
+  - LEAD UPPERCUT
+  heavyAttackStates:
+  - RIGHT STRAIT KNEE
+  - ROUNDHOUSE KICK
+  crossfadeDuration: 0.1
   useAnimationEvents: 1
-  showDebugHitbox: 0
+  showDebugHitbox: 1
   lightColors:
   - {r: 1, g: 1, b: 1, a: 1}
   - {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
@@ -12805,7 +12813,7 @@ MonoBehaviour:
   disableOnStart: 1
   ragdollDelay: 0
   applyDeathForce: 0
-  deathForceAmount: 500
+  deathForceAmount: 200
   deathForceDirection: {x: 0, y: 0, z: 1}
   disableAnimator: 1
   disableCharacterController: 1
@@ -12828,14 +12836,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e818ec08db23d244b70d527915d0b22, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  bloodParticlePrefab: {fileID: 7702125850340962839, guid: ba8ab9f6b0fafbf439ba7810323282a5, type: 3}
+  particleMaterial: {fileID: 2100000, guid: b4f2efd13b045c146b1c9533bc12ab58, type: 2}
   mouthTarget: {fileID: 165993457526322856}
-  streamsPerOrb: 4
+  streamsPerOrb: 3
   siphonDuration: 0.75
-  particlesPerSecond: 10
-  particleSpeed: 10
+  particlesPerSecond: 20.5
+  particleSpeed: 7
   particleSize: 0.175
-  bloodColor: {r: 0.8, g: 0, b: 0, a: 1}
+  bloodColorStart: {r: 1, g: 0, b: 0, a: 1}
+  bloodColorEnd: {r: 0.18238991, g: 0, b: 0, a: 1}
   curvature: 0.75
   pathVariation: 0.5
   showDebugPaths: 1
@@ -13597,7 +13606,7 @@ RectTransform:
   m_GameObject: {fileID: 5613040893921925974}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2.7565987, y: 2.7565987, z: 2.7565987}
+  m_LocalScale: {x: 5.339532, y: 5.339532, z: 5.339532}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 8660545842452056738}
@@ -13607,7 +13616,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: -28, y: 0}
+  m_AnchoredPosition: {x: -50, y: 0.0000009536743}
   m_SizeDelta: {x: 20, y: 160}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &6638412560742284916
@@ -13925,12 +13934,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
-  m_MatchWidthOrHeight: 0
+  m_MatchWidthOrHeight: 0.5
   m_PhysicalUnit: 3
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
