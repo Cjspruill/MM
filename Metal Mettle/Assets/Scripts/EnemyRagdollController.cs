@@ -185,7 +185,7 @@ public class EnemyRagdollController : MonoBehaviour
                 rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
                 // Clear any existing velocities to prevent snapping
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }
         }
@@ -233,7 +233,7 @@ public class EnemyRagdollController : MonoBehaviour
             {
                 rb.isKinematic = true;
                 rb.useGravity = false;
-                rb.velocity = Vector3.zero;
+                rb.linearVelocity = Vector3.zero;
                 rb.angularVelocity = Vector3.zero;
             }
         }

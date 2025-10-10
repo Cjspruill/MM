@@ -7,6 +7,7 @@ public class EnemyAI : MonoBehaviour
     public Transform player;
     private NavMeshAgent agent;
     private Health health;
+    private Animator animator; // Add animator reference
 
     [Header("Movement Settings")]
     public float chaseSpeed = 3.5f;
@@ -18,14 +19,18 @@ public class EnemyAI : MonoBehaviour
 
     [Header("Combat Settings")]
     public BoxCollider attackHitbox;
-    public MeshRenderer debugRenderer; // Optional debug visual
+    public MeshRenderer debugRenderer;
     public float attackRange = 2.5f;
     public float attackDuration = 0.3f;
     public int minComboAttacks = 1;
     public int maxComboAttacks = 3;
-    public float timeBetweenAttacks = 0.8f; // Time between attacks in a combo
-    public float comboCooldown = 2f; // Time before starting a new combo
-    public float attackWindupTime = 0.5f; // Increased for telegraph
+    public float timeBetweenAttacks = 0.8f;
+    public float comboCooldown = 2f;
+    public float attackWindupTime = 0.5f;
+
+    [Header("Animation Settings")]
+    public string[] attackTriggers = { "Attack1", "Attack2", "Attack3" }; // Trigger names for each attack
+    public bool useAnimationEvents = true; // Use animation events for hitbox timing
 
     [Header("Hitstun")]
     public float baseHitstunDuration = 0.4f;
@@ -47,6 +52,12 @@ public class EnemyAI : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         health = GetComponent<Health>();
+        animator = GetComponent<Animator>(); // Get animator component
+
+        if (animator == null)
+        {
+            Debug.LogError($"{gameObject.name}: No Animator component found!");
+        }
 
         // Find player if not assigned
         if (player == null)
@@ -94,12 +105,26 @@ public class EnemyAI : MonoBehaviour
             {
                 agent.isStopped = true;
             }
+
+            // Set animator parameters for death
+            if (animator != null)
+            {
+                animator.SetFloat("Speed", 0f);
+                animator.SetBool("IsAttacking", false);
+            }
             return;
         }
 
         if (player == null || agent == null) return;
 
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+
+        // Update animator speed parameter
+        if (animator != null)
+        {
+            float currentSpeed = agent.velocity.magnitude;
+            animator.SetFloat("Speed", currentSpeed);
+        }
 
         // Check if should chase
         if (alwaysChase || distanceToPlayer <= detectionRange)
@@ -144,7 +169,6 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    // Called by player's AttackCollider when hit
     public void ApplyHitstun(float duration)
     {
         isStunned = true;
@@ -153,6 +177,13 @@ public class EnemyAI : MonoBehaviour
         CancelInvoke();
         DeactivateHitbox();
         isAttacking = false;
+
+        // Reset animator
+        if (animator != null)
+        {
+            animator.SetBool("IsAttacking", false);
+            animator.SetInteger("ComboStep", 0);
+        }
 
         Invoke(nameof(RecoverFromStun), duration);
 
@@ -193,23 +224,40 @@ public class EnemyAI : MonoBehaviour
         isAttacking = true;
         lastAttackTime = Time.time;
 
+        // Update animator parameters
+        if (animator != null)
+        {
+            animator.SetBool("IsAttacking", true);
+            animator.SetInteger("ComboStep", currentComboStep);
+
+            // Trigger specific attack animation if using triggers
+            if (currentComboStep <= attackTriggers.Length)
+            {
+                animator.SetTrigger(attackTriggers[currentComboStep - 1]);
+            }
+        }
+
         if (showDebug)
         {
             Debug.Log($"{gameObject.name} attack {currentComboStep}/{targetComboLength}");
         }
 
         // Show telegraph during windup
-        if (debugRenderer != null)
+        if (debugRenderer != null && showDebug)
         {
-            if(showDebug)
             debugRenderer.enabled = true;
         }
 
-        // Windup delay before hitbox activates
-        Invoke(nameof(ActivateHitbox), attackWindupTime);
+        // If NOT using animation events, use timed hitbox activation
+        if (!useAnimationEvents)
+        {
+            Invoke(nameof(ActivateHitbox), attackWindupTime);
+        }
+        // Otherwise, ActivateHitbox() will be called by animation event
     }
 
-    void ActivateHitbox()
+    // Called by Animation Event OR Invoke
+    public void ActivateHitbox()
     {
         // Clear hit list before activating
         if (enemyAttackCollider != null)
@@ -222,13 +270,16 @@ public class EnemyAI : MonoBehaviour
             attackHitbox.enabled = true;
         }
 
-        // Debug renderer stays on during attack
-
-        // Disable hitbox after attack duration
-        Invoke(nameof(DeactivateHitbox), attackDuration);
+        // If NOT using animation events, schedule deactivation
+        if (!useAnimationEvents)
+        {
+            Invoke(nameof(DeactivateHitbox), attackDuration);
+        }
+        // Otherwise, DeactivateHitbox() will be called by animation event
     }
 
-    void DeactivateHitbox()
+    // Called by Animation Event OR Invoke
+    public void DeactivateHitbox()
     {
         if (attackHitbox != null)
         {
@@ -236,13 +287,18 @@ public class EnemyAI : MonoBehaviour
         }
 
         // Disable debug renderer
-        if (debugRenderer != null)
+        if (debugRenderer != null && showDebug)
         {
-            if(showDebug)
             debugRenderer.enabled = false;
         }
 
         isAttacking = false;
+
+        // Update animator
+        if (animator != null)
+        {
+            animator.SetBool("IsAttacking", false);
+        }
 
         // Check if combo should continue
         if (currentComboStep < targetComboLength)
@@ -262,6 +318,13 @@ public class EnemyAI : MonoBehaviour
         inCombat = false;
         currentComboStep = 0;
         targetComboLength = 0;
+
+        // Reset animator parameters
+        if (animator != null)
+        {
+            animator.SetBool("IsAttacking", false);
+            animator.SetInteger("ComboStep", 0);
+        }
 
         // Set cooldown before next combo
         nextAttackTime = Time.time + comboCooldown;
@@ -287,7 +350,6 @@ public class EnemyAI : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position, attackRange);
     }
 
-    // Public method to stop chasing
     public void StopChasing()
     {
         isChasing = false;
@@ -297,7 +359,6 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    // Public method to resume chasing
     public void ResumeChasing()
     {
         isChasing = true;
@@ -307,6 +368,5 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    // Public getter for attack state
     public bool IsAttacking() => isAttacking;
 }
