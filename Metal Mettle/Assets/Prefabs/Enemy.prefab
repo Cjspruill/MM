@@ -288,7 +288,7 @@ MonoBehaviour:
   chaseSpeed: 3.5
   stoppingDistance: 1
   detectionRange: 15
-  alwaysChase: 1
+  alwaysChase: 0
   attackHitbox: {fileID: 2521031087679563329}
   debugRenderer: {fileID: 2680022142810504579}
   attackRange: 1.5
@@ -298,7 +298,15 @@ MonoBehaviour:
   timeBetweenAttacks: 0.8
   comboCooldown: 2
   attackWindupTime: 0.3
+  attackTriggers:
+  - Attack1
+  - Attack2
+  - Attack3
+  useAnimationEvents: 1
   baseHitstunDuration: 0.4
+  avoidanceRadius: 0.5
+  avoidancePriority: 50
+  disableAvoidanceInCombat: 1
   showDebug: 0
 --- !u!195 &1463592467131063590
 NavMeshAgent:
@@ -392,7 +400,7 @@ Animator:
   m_Enabled: 1
   m_Avatar: {fileID: 9000000, guid: c2b7d87f2e8caf8428ca4d6bfb965849, type: 3}
   m_Controller: {fileID: 9100000, guid: a13b1c33d8bf69c4f9347bb07528c99b, type: 2}
-  m_CullingMode: 0
+  m_CullingMode: 2
   m_UpdateMode: 0
   m_ApplyRootMotion: 0
   m_LinearVelocityBlending: 0

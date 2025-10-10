@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -156,6 +157,11 @@ public class MainMenuController : MonoBehaviour
     public void SetWaitDuration(float duration)
     {
         waitDuration = Mathf.Max(0f, duration);
+    }
+
+    public void LoadLevel(string sceneName)
+    {
+        SceneManager.LoadScene(sceneName);
     }
 
     public void MoveToPosition(int index)
