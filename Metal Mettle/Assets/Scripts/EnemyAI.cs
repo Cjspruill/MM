@@ -7,7 +7,7 @@ public class EnemyAI : MonoBehaviour
     public Transform player;
     private NavMeshAgent agent;
     private Health health;
-    private Animator animator; // Add animator reference
+    private Animator animator;
 
     [Header("Movement Settings")]
     public float chaseSpeed = 3.5f;
@@ -29,11 +29,16 @@ public class EnemyAI : MonoBehaviour
     public float attackWindupTime = 0.5f;
 
     [Header("Animation Settings")]
-    public string[] attackTriggers = { "Attack1", "Attack2", "Attack3" }; // Trigger names for each attack
-    public bool useAnimationEvents = true; // Use animation events for hitbox timing
+    public string[] attackTriggers = { "Attack1", "Attack2", "Attack3" };
+    public bool useAnimationEvents = true;
 
     [Header("Hitstun")]
     public float baseHitstunDuration = 0.4f;
+
+    [Header("Avoidance Settings")]
+    public float avoidanceRadius = 0.5f; // Reduce from default 0.5
+    public int avoidancePriority = 50; // Lower priority = pushed more easily
+    public bool disableAvoidanceInCombat = true; // Disable pushing when attacking
 
     [Header("Debug")]
     public bool showDebug = true;
@@ -52,7 +57,7 @@ public class EnemyAI : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         health = GetComponent<Health>();
-        animator = GetComponent<Animator>(); // Get animator component
+        animator = GetComponent<Animator>();
 
         if (animator == null)
         {
@@ -78,6 +83,10 @@ public class EnemyAI : MonoBehaviour
         {
             agent.speed = chaseSpeed;
             agent.stoppingDistance = stoppingDistance;
+
+            // Configure avoidance - reduce radius and adjust priority
+            agent.radius = avoidanceRadius;
+            agent.avoidancePriority = avoidancePriority;
         }
 
         // Ensure hitbox is off and get EnemyAttackCollider reference
@@ -141,6 +150,12 @@ public class EnemyAI : MonoBehaviour
                 // Stop moving when in attack range
                 agent.isStopped = true;
 
+                // Disable avoidance when in combat range
+                if (disableAvoidanceInCombat && agent.enabled)
+                {
+                    agent.obstacleAvoidanceType = ObstacleAvoidanceType.NoObstacleAvoidance;
+                }
+
                 // Face player
                 Vector3 directionToPlayer = (player.position - transform.position).normalized;
                 directionToPlayer.y = 0;
@@ -157,6 +172,12 @@ public class EnemyAI : MonoBehaviour
             }
             else
             {
+                // Re-enable avoidance when chasing
+                if (disableAvoidanceInCombat && agent.enabled)
+                {
+                    agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+                }
+
                 // Chase player
                 agent.isStopped = false;
                 agent.SetDestination(player.position);
@@ -177,6 +198,12 @@ public class EnemyAI : MonoBehaviour
         CancelInvoke();
         DeactivateHitbox();
         isAttacking = false;
+
+        // Re-enable avoidance during hitstun (so they can be pushed back)
+        if (agent != null && agent.enabled)
+        {
+            agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+        }
 
         // Reset animator
         if (animator != null)
@@ -253,10 +280,8 @@ public class EnemyAI : MonoBehaviour
         {
             Invoke(nameof(ActivateHitbox), attackWindupTime);
         }
-        // Otherwise, ActivateHitbox() will be called by animation event
     }
 
-    // Called by Animation Event OR Invoke
     public void ActivateHitbox()
     {
         // Clear hit list before activating
@@ -275,10 +300,8 @@ public class EnemyAI : MonoBehaviour
         {
             Invoke(nameof(DeactivateHitbox), attackDuration);
         }
-        // Otherwise, DeactivateHitbox() will be called by animation event
     }
 
-    // Called by Animation Event OR Invoke
     public void DeactivateHitbox()
     {
         if (attackHitbox != null)

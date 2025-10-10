@@ -126,8 +126,17 @@ MonoBehaviour:
   pulseSpeed: 2
   pulseScale: 0.2
   orbColor: {r: 1, g: 0, b: 0, a: 1}
+  useEmission: 1
+  emissionIntensity: 0.8
+  minSize: 0.05
+  maxSize: 0.25
+  viscosity: 0.4
+  bloodDensity: 1.5
+  airDrag: 1.5
+  surfaceStickiness: 0.3
+  enableDripTrail: 1
   absorptionRange: 7
-  absorptionDuration: 0.5
+  absorptionDuration: 0.75
   absorptionCurve:
     serializedVersion: 2
     m_Curve:
@@ -152,6 +161,13 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  absorbBoolName: IsAbsorbing
+  forceImmediateTransition: 1
+  absorbStateName: Absorb
+  crossfadeDuration: 0.15
+  useUpperBodyWhenMoving: 1
+  upperBodyLayerIndex: 1
+  fullBodyLayerIndex: 0
   explosionForce: 100
   upwardForce: 200
   randomSpread: 50

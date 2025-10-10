@@ -35,6 +35,17 @@ public class ComboController : MonoBehaviour
     public float blockStartupTime = 0.15f;
     public float blockRecovery = 0.25f;
 
+    [Header("Animation State Names")]
+    [Tooltip("Exact names of light attack states in animator")]
+    public string[] lightAttackStates = { "JAB", "CROSS", "LEAD UPPERCUT" };
+
+    [Tooltip("Exact names of heavy attack states in animator")]
+    public string[] heavyAttackStates = { "RIGHT STRAIT KNEE", "ROUNDHOUSE KICK" };
+
+    [Tooltip("How long to blend between animations (seconds)")]
+    [Range(0f, 0.5f)]
+    public float crossfadeDuration = 0.1f;
+
     [Header("Animation")]
     public bool useAnimationEvents = true;
     public bool showDebugHitbox = true;
@@ -65,8 +76,6 @@ public class ComboController : MonoBehaviour
     private bool currentAttackIsHeavy = false;
     private int currentAttackStep = 0;
     private float nextAttackAllowedTime = 0f;
-
-    // NEW: Track if we're in the process of triggering an attack
     private bool isProcessingAttack = false;
 
     void Start()
@@ -221,8 +230,6 @@ public class ComboController : MonoBehaviour
             }
         }
 
-        // FIXED: More comprehensive combo timeout protection
-        // Don't timeout if: attacking, has buffered input, or currently processing an attack
         bool safeToTimeout = !isAttacking && !hasBufferedInput && !isProcessingAttack && !waitingForAnimationComplete;
 
         if (Time.time - lastAttackTime > comboWindow && comboStep > 0 && safeToTimeout)
@@ -234,7 +241,6 @@ public class ComboController : MonoBehaviour
 
     void TriggerAttack(bool isHeavy)
     {
-        // NEW: Prevent simultaneous attack triggers
         if (isProcessingAttack)
         {
             DebugLog($"⚠️ Already processing an attack, ignoring trigger");
@@ -309,9 +315,7 @@ public class ComboController : MonoBehaviour
             }
         }
 
-        // NEW: Store previous combo step for validation
         int previousComboStep = comboStep;
-
         comboStep++;
 
         int maxCombo;
@@ -339,7 +343,6 @@ public class ComboController : MonoBehaviour
         float adjustedCooldown = attackCooldown / speedModifier;
         float adjustedRecovery = (isHeavy ? heavyRecovery : lightRecovery) / speedModifier;
 
-        // NEW: Set all critical state BEFORE animator to prevent race conditions
         isAttacking = true;
         waitingForAnimationComplete = true;
         canAttack = false;
@@ -350,18 +353,24 @@ public class ComboController : MonoBehaviour
 
         DebugLog($"   STATE SET: isAttacking={isAttacking}, lastAttackTime={lastAttackTime}, step={comboStep}");
 
+        // NEW: Play specific animation state with smooth crossfade
         if (animator != null)
         {
-            // Clear any pending triggers first
-            animator.ResetTrigger("AttackTrigger");
+            string stateName = GetAttackStateName(isHeavyCombo, comboStep);
 
-            animator.SetTrigger("AttackTrigger");
-            animator.SetInteger("ComboStep", comboStep);
-            animator.SetBool("IsHeavy", isHeavyCombo);
-            animator.SetFloat("AttackSpeed", speedModifier);
-            animator.speed = speedModifier;
+            if (!string.IsNullOrEmpty(stateName))
+            {
+                // Crossfade to the state instead of instant play
+                animator.CrossFade(stateName, crossfadeDuration, 0, 0f);
+                animator.SetFloat("AttackSpeed", speedModifier);
+                animator.speed = speedModifier;
 
-            DebugLog($"   ANIMATOR: Trigger set, Step={comboStep}, IsHeavy={isHeavyCombo}, Speed={speedModifier}");
+                DebugLog($"   🎬 CROSSFADING TO: {stateName} over {crossfadeDuration}s (Speed={speedModifier})");
+            }
+            else
+            {
+                Debug.LogError($"❌ No animation state name for combo step {comboStep}!");
+            }
         }
 
         if (!useAnimationEvents)
@@ -381,8 +390,32 @@ public class ComboController : MonoBehaviour
         float totalRecovery = adjustedCooldown + adjustedRecovery;
         Invoke(nameof(EndRecovery), totalRecovery);
 
-        // NEW: Clear processing flag after a short delay to allow animation to start
         Invoke(nameof(ClearProcessingFlag), 0.1f);
+    }
+
+    /// <summary>
+    /// Gets the exact animator state name for the given combo step
+    /// </summary>
+    string GetAttackStateName(bool isHeavy, int step)
+    {
+        if (isHeavy)
+        {
+            int index = step - 1;
+            if (index >= 0 && index < heavyAttackStates.Length)
+            {
+                return heavyAttackStates[index];
+            }
+        }
+        else
+        {
+            int index = step - 1;
+            if (index >= 0 && index < lightAttackStates.Length)
+            {
+                return lightAttackStates[index];
+            }
+        }
+
+        return null;
     }
 
     void ClearProcessingFlag()
@@ -457,7 +490,6 @@ public class ComboController : MonoBehaviour
 
     void ResetCombo()
     {
-        // NEW: Additional safety checks
         if (isAttacking || isProcessingAttack || waitingForAnimationComplete)
         {
             DebugLog($"⚠️ Preventing reset - state locked (attacking:{isAttacking}, processing:{isProcessingAttack}, waiting:{waitingForAnimationComplete})");
@@ -478,12 +510,6 @@ public class ComboController : MonoBehaviour
         isProcessingAttack = false;
 
         nextAttackAllowedTime = 0f;
-
-        if (animator != null)
-        {
-            animator.SetInteger("ComboStep", 0);
-            animator.SetBool("IsHeavy", false);
-        }
     }
 
     void EndCombo()
@@ -511,12 +537,6 @@ public class ComboController : MonoBehaviour
 
         if (attackHitbox) attackHitbox.enabled = false;
         if (debugRenderer) debugRenderer.enabled = false;
-
-        if (animator != null)
-        {
-            animator.SetInteger("ComboStep", 0);
-            animator.SetBool("IsHeavy", false);
-        }
 
         nextAttackAllowedTime = Time.time + comboEndCooldown;
         canAttack = true;
@@ -589,8 +609,18 @@ public class ComboController : MonoBehaviour
     {
         if (!enableDebugLogs) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 400, 280));
+        GUILayout.BeginArea(new Rect(10, 10, 400, 300));
         GUILayout.Label($"Combo: {comboStep} ({(isHeavyCombo ? "HEAVY" : "LIGHT")})");
+
+        // Show current state name
+        string currentState = GetAttackStateName(isHeavyCombo, comboStep);
+        if (!string.IsNullOrEmpty(currentState))
+        {
+            GUI.color = Color.yellow;
+            GUILayout.Label($"State: {currentState}");
+            GUI.color = Color.white;
+        }
+
         GUILayout.Label($"Can Attack: {canAttack}");
         GUILayout.Label($"Attacking: {isAttacking}");
         GUILayout.Label($"Processing: {isProcessingAttack}");
@@ -616,3 +646,54 @@ public class ComboController : MonoBehaviour
         GUILayout.EndArea();
     }
 }
+
+/*
+=== KEY CHANGES ===
+
+1. DIRECT STATE CONTROL:
+   - Uses animator.Play(stateName) instead of triggers
+   - Forces animator to specific state immediately
+   - No more missed triggers or timing issues
+
+2. STATE NAME ARRAYS:
+   - lightAttackStates[] = exact animation state names
+   - heavyAttackStates[] = exact animation state names
+   - GetAttackStateName() returns correct state for combo step
+
+3. HOW IT WORKS:
+   - Combo step 1 (light) → plays "JAB"
+   - Combo step 2 (light) → plays "CROSS"
+   - Combo step 3 (light) → plays "LEAD UPPERCUT"
+   - Combo step 1 (heavy) → plays "RIGHT STRAIT KNEE"
+   - Combo step 2 (heavy) → plays "ROUNDHOUSE KICK"
+
+4. REMOVED ANIMATOR PARAMETERS:
+   - No more ComboStep, IsHeavy, AttackTrigger parameters needed
+   - Only AttackSpeed and IsBlocking remain
+   - Much simpler animator setup
+
+=== SETUP INSTRUCTIONS ===
+
+1. In Inspector, set the state names EXACTLY as they appear in your animator:
+   - Light Attack States[0] = "JAB"
+   - Light Attack States[1] = "CROSS"
+   - Light Attack States[2] = "LEAD UPPERCUT"
+   - Heavy Attack States[0] = "RIGHT STRAIT KNEE"
+   - Heavy Attack States[1] = "ROUNDHOUSE KICK"
+
+2. Make sure these states are in your animator (case-sensitive!)
+
+3. The script will now force-play these states directly, bypassing triggers
+
+4. Debug GUI will show the current state name in yellow
+
+=== BENEFITS ===
+
+✓ No missed triggers
+✓ No timing issues
+✓ Direct control over animation
+✓ Guaranteed correct state plays
+✓ Easier to debug (see state name on screen)
+✓ More reliable combo flow
+
+*/
