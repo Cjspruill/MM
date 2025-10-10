@@ -28,6 +28,7 @@ public class BloodOrb : MonoBehaviour
     private BloodSystem playerBloodSystem;
     private ComboController playerComboController;
     private Animator playerAnimator;
+    private BloodSiphonEffect playerSiphonEffect; // NEW: Reference to siphon effect
     private InputSystem_Actions controls;
     private bool isAbsorbing = false;
     private float absorptionTimer = 0f;
@@ -47,10 +48,16 @@ public class BloodOrb : MonoBehaviour
             playerBloodSystem = playerObj.GetComponent<BloodSystem>();
             playerComboController = playerObj.GetComponent<ComboController>();
             playerAnimator = playerObj.GetComponent<Animator>();
+            playerSiphonEffect = playerObj.GetComponent<BloodSiphonEffect>(); // NEW: Get siphon effect component
 
             if (playerAnimator == null)
             {
                 Debug.LogWarning("BloodOrb: Player Animator not found!");
+            }
+
+            if (playerSiphonEffect == null)
+            {
+                Debug.LogWarning("BloodOrb: BloodSiphonEffect not found on player!");
             }
         }
 
@@ -141,9 +148,19 @@ public class BloodOrb : MonoBehaviour
 
     void StartAbsorption()
     {
+        // IMPORTANT: Prevent multiple calls while button is held
+        if (isAbsorbing) return;
+
         isAbsorbing = true;
         absorptionTimer = 0f;
         startPosition = transform.position;
+
+        // NEW: Start the blood siphon effect (called only once)
+        if (playerSiphonEffect != null)
+        {
+            playerSiphonEffect.StartSiphon(transform.position);
+            Debug.Log("Started blood siphon effect");
+        }
 
         // Stop physics movement during absorption
         if (rb != null)
@@ -214,3 +231,31 @@ public class BloodOrb : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position, absorptionRange);
     }
 }
+
+/*
+=== CHANGES MADE ===
+
+1. Added private field:
+   - BloodSiphonEffect playerSiphonEffect;
+
+2. In Start():
+   - playerSiphonEffect = playerObj.GetComponent<BloodSiphonEffect>();
+   - Added warning if component not found
+
+3. In StartAbsorption():
+   - Added guard: if (isAbsorbing) return;
+   - Calls playerSiphonEffect.StartSiphon(transform.position);
+
+=== WHY THE GUARD IS IMPORTANT ===
+
+Without "if (isAbsorbing) return;", the function could be called multiple times
+because IsPressed() returns true every frame the button is held down. This would
+create hundreds of particle systems! The guard ensures it only runs once.
+
+=== WHAT TO CHECK ===
+
+1. Make sure BloodSiphonEffect component is on your Player GameObject
+2. Make sure you've assigned the particle system prefab in the inspector
+3. Make sure you've assigned the mouth target transform
+4. Test with one orb first to verify it creates the correct number of strands
+*/

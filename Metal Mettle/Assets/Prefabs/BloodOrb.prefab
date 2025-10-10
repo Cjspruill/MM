@@ -126,7 +126,7 @@ MonoBehaviour:
   pulseSpeed: 2
   pulseScale: 0.2
   orbColor: {r: 1, g: 0, b: 0, a: 1}
-  absorptionRange: 3
+  absorptionRange: 7
   absorptionDuration: 0.5
   absorptionCurve:
     serializedVersion: 2

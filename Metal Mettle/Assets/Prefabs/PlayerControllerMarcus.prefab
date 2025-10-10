@@ -375,6 +375,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2664768139480179745}
+  - {fileID: 165993457526322856}
   m_Father: {fileID: 1046169764693639478}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!135 &4071950763867541138
@@ -10934,7 +10935,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 4102
+  m_VersionIndex: 4120
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -12590,6 +12591,7 @@ GameObject:
   - component: {fileID: 3577213553172988952}
   - component: {fileID: 1149368816719480044}
   - component: {fileID: 5464263933697659478}
+  - component: {fileID: 1540190951960983650}
   m_Layer: 0
   m_Name: PlayerControllerMarcus
   m_TagString: Player
@@ -12814,6 +12816,29 @@ MonoBehaviour:
   playerController: {fileID: 3741558112251159452}
   comboController: {fileID: 3577213553172988952}
   showDebugLogs: 0
+--- !u!114 &1540190951960983650
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3960976435513088089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e818ec08db23d244b70d527915d0b22, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  bloodParticlePrefab: {fileID: 7702125850340962839, guid: ba8ab9f6b0fafbf439ba7810323282a5, type: 3}
+  mouthTarget: {fileID: 165993457526322856}
+  streamsPerOrb: 4
+  siphonDuration: 0.75
+  particlesPerSecond: 10
+  particleSpeed: 10
+  particleSize: 0.175
+  bloodColor: {r: 0.8, g: 0, b: 0, a: 1}
+  curvature: 0.75
+  pathVariation: 0.5
+  showDebugPaths: 1
 --- !u!1 &4158461553212890493
 GameObject:
   m_ObjectHideFlags: 0
@@ -13763,6 +13788,37 @@ SkinnedMeshRenderer:
     m_Center: {x: -0.30696458, y: -0.07000545, z: 0.0001245439}
     m_Extent: {x: 0.18225129, y: 0.157433, z: 0.110385984}
   m_DirtyAABB: 0
+--- !u!1 &6148620280159141718
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 165993457526322856}
+  m_Layer: 0
+  m_Name: JawPosition
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &165993457526322856
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6148620280159141718}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -0.148, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7003965823258222831}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6250070033786324693
 GameObject:
   m_ObjectHideFlags: 0
