@@ -122,7 +122,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e29751489adb94343ac10e57c813eac6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  bloodAmount: 5
+  bloodAmount: 3
   pulseSpeed: 2
   pulseScale: 0.2
   orbColor: {r: 1, g: 0, b: 0, a: 1}

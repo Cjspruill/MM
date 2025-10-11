@@ -10935,7 +10935,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 4153
+  m_VersionIndex: 4168
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -13212,7 +13212,7 @@ GameObject:
   - component: {fileID: 5464263933697659478}
   - component: {fileID: 1540190951960983650}
   - component: {fileID: 7735593756076014778}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: PlayerControllerMarcus
   m_TagString: Player
   m_Icon: {fileID: 0}
@@ -13355,9 +13355,17 @@ MonoBehaviour:
   - JAB
   - CROSS
   - LEAD UPPERCUT
+  - BACK HOOK
+  - BACK UPPERCUT
+  - LEAD HOOK
+  - LEFT TEEP
+  - RIGHT TEEP
+  - LOW KICK LEFT
+  - LOW KICK RIGHT
   heavyAttackStates:
   - RIGHT STRAIT KNEE
   - ROUNDHOUSE KICK
+  - SWITCH KICK
   crossfadeDuration: 0.1
   useAnimationEvents: 1
   showDebugHitbox: 0
@@ -13386,7 +13394,7 @@ MonoBehaviour:
   baseMaxBlood: 100
   passiveDrainRate: 0
   lightAttackCost: 2
-  heavyAttackCost: 3
+  heavyAttackCost: 5
   desperationUnlocked: 0
   desperationGain: 35
   desperationMaxCapacityLoss: 10

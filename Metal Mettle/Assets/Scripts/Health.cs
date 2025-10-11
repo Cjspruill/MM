@@ -16,8 +16,6 @@ public class Health : MonoBehaviour
     public GameObject bloodOrbPrefab;
     public bool dropBloodOnHit = true;
     public bool dropBloodOnDeath = true;
-    public float bloodDropAmount = 25f;
-    public float bloodDropVariance = 10f;
     public Vector3 bloodDropOffset = new Vector3(0, 1, 0);
 
     [Header("Blood Orb Count")]
@@ -25,6 +23,10 @@ public class Health : MonoBehaviour
     public int maxLightOrbCount = 3;
     public int minHeavyOrbCount = 2;
     public int maxHeavyOrbCount = 6;
+
+    [Header("Alert Settings")]
+    public bool alertOnDamage = true; // Alert AI when taking damage
+    public float damageAnimationChance = 0.5f; // 50% chance to play damage animation
 
     [Header("Events")]
     public UnityEvent onDamage;
@@ -35,11 +37,15 @@ public class Health : MonoBehaviour
 
     private bool isDead = false;
     private NavMeshAgent navAgent;
+    private EnemyAI enemyAI;
+    private Animator animator;
 
     void Start()
     {
         currentHealth = maxHealth;
         navAgent = GetComponent<NavMeshAgent>();
+        enemyAI = GetComponent<EnemyAI>();
+        animator = GetComponent<Animator>();
     }
 
     public void TakeDamage(float damage, bool isHeavyAttack = false)
@@ -58,6 +64,23 @@ public class Health : MonoBehaviour
         if (dropBloodOnHit)
         {
             DropBloodOrbs(isHeavyAttack);
+        }
+
+        // Alert enemy AI to player
+        if (alertOnDamage && enemyAI != null)
+        {
+            enemyAI.AlertToPlayer();
+        }
+
+        // Play damage animation 50% of the time
+        if (animator != null && Random.value <= damageAnimationChance)
+        {
+            animator.SetTrigger("Damage");
+
+            if (showDebugLogs)
+            {
+                Debug.Log($"{gameObject.name} playing damage animation");
+            }
         }
 
         onDamage?.Invoke();
@@ -124,7 +147,7 @@ public class Health : MonoBehaviour
         int orbCount;
         if (isHeavyAttack)
         {
-            orbCount = Random.Range(minHeavyOrbCount, maxHeavyOrbCount + 1); // +1 because Range is exclusive on max
+            orbCount = Random.Range(minHeavyOrbCount, maxHeavyOrbCount + 1);
         }
         else
         {
@@ -136,14 +159,9 @@ public class Health : MonoBehaviour
             Debug.Log($"Dropping {orbCount} blood orbs ({(isHeavyAttack ? "HEAVY" : "LIGHT")} attack)");
         }
 
-        // Spawn multiple orbs in a spread pattern
+        // Spawn orbs in a spread pattern
         for (int i = 0; i < orbCount; i++)
         {
-            // Calculate random blood amount for this orb
-            float variance = Random.Range(-bloodDropVariance, bloodDropVariance);
-            float finalBloodAmount = bloodDropAmount + variance;
-            finalBloodAmount = Mathf.Max(finalBloodAmount, 5f); // Minimum 5 blood
-
             // Random spread around the spawn point
             Vector3 randomOffset = new Vector3(
                 Random.Range(-0.5f, 0.5f),
@@ -152,19 +170,8 @@ public class Health : MonoBehaviour
             );
             Vector3 spawnPos = transform.position + bloodDropOffset + randomOffset;
 
-            // Spawn blood orb
-            GameObject orb = Instantiate(bloodOrbPrefab, spawnPos, Quaternion.identity);
-
-            // Set blood amount on orb
-            BloodOrb orbScript = orb.GetComponent<BloodOrb>();
-            if (orbScript != null)
-            {
-                orbScript.bloodAmount = finalBloodAmount;
-            }
-            else
-            {
-                Debug.LogError("Blood orb prefab is missing BloodOrb script!");
-            }
+            // Spawn blood orb - it will use its own bloodAmount from the prefab
+            Instantiate(bloodOrbPrefab, spawnPos, Quaternion.identity);
         }
     }
 

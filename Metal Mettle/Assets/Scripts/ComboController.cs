@@ -77,6 +77,10 @@ public class ComboController : MonoBehaviour
     private int currentAttackStep = 0;
     private float nextAttackAllowedTime = 0f;
     private bool isProcessingAttack = false;
+    private bool successfulBlockFlag = false;
+
+    private string lastLightAttack = "";
+    private string lastHeavyAttack = "";
 
     void Start()
     {
@@ -425,34 +429,86 @@ public class ComboController : MonoBehaviour
     }
 
     /// <summary>
-    /// Gets the exact animator state name for the given combo step
-    /// </summary>
-    string GetAttackStateName(bool isHeavy, int step)
+/// Gets a random animator state name for the given combo step
+/// Both light and heavy attacks are randomly selected from available animations
+/// Avoids repeating the same attack twice in a row
+/// </summary>
+string GetAttackStateName(bool isHeavy, int step)
+{
+    if (isHeavy)
     {
-        if (isHeavy)
+        // Heavy attacks are RANDOMIZED - pick any available heavy attack
+        if (heavyAttackStates.Length > 0)
         {
-            int index = step - 1;
-            // Clamp to available animations - for heavy finisher on step 3, use last heavy animation
-            index = Mathf.Min(index, heavyAttackStates.Length - 1);
-            if (index >= 0 && index < heavyAttackStates.Length)
+            string selectedAttack;
+            
+            if (heavyAttackStates.Length == 1)
             {
-                DebugLog($"   Getting heavy animation: index={index}, state={heavyAttackStates[index]}");
-                return heavyAttackStates[index];
+                // Only one option
+                selectedAttack = heavyAttackStates[0];
             }
-        }
-        else
-        {
-            int index = step - 1;
-            if (index >= 0 && index < lightAttackStates.Length)
+            else if (step == 1 || string.IsNullOrEmpty(lastHeavyAttack))
             {
-                DebugLog($"   Getting light animation: index={index}, state={lightAttackStates[index]}");
-                return lightAttackStates[index];
+                // First attack - any is fine
+                int randomIndex = Random.Range(0, heavyAttackStates.Length);
+                selectedAttack = heavyAttackStates[randomIndex];
             }
+            else
+            {
+                // Not first attack - avoid repeating last attack
+                int attempts = 0;
+                do
+                {
+                    int randomIndex = Random.Range(0, heavyAttackStates.Length);
+                    selectedAttack = heavyAttackStates[randomIndex];
+                    attempts++;
+                } while (selectedAttack == lastHeavyAttack && attempts < 10);
+            }
+            
+            lastHeavyAttack = selectedAttack;
+            DebugLog($"   🎲 Random heavy animation: step={step}, state={selectedAttack}");
+            return selectedAttack;
         }
-
-        Debug.LogError($"❌ No animation found for isHeavy={isHeavy}, step={step}!");
-        return null;
     }
+    else
+    {
+        // Light attacks are RANDOMIZED - pick any available light attack
+        if (lightAttackStates.Length > 0)
+        {
+            string selectedAttack;
+            
+            if (lightAttackStates.Length == 1)
+            {
+                // Only one option
+                selectedAttack = lightAttackStates[0];
+            }
+            else if (step == 1 || string.IsNullOrEmpty(lastLightAttack))
+            {
+                // First attack - any is fine
+                int randomIndex = Random.Range(0, lightAttackStates.Length);
+                selectedAttack = lightAttackStates[randomIndex];
+            }
+            else
+            {
+                // Not first attack - avoid repeating last attack
+                int attempts = 0;
+                do
+                {
+                    int randomIndex = Random.Range(0, lightAttackStates.Length);
+                    selectedAttack = lightAttackStates[randomIndex];
+                    attempts++;
+                } while (selectedAttack == lastLightAttack && attempts < 10);
+            }
+            
+            lastLightAttack = selectedAttack;
+            DebugLog($"   🎲 Random light animation: step={step}, state={selectedAttack}");
+            return selectedAttack;
+        }
+    }
+
+    Debug.LogError($"❌ No animation found for isHeavy={isHeavy}, step={step}!");
+    return null;
+}
 
     void ClearProcessingFlag()
     {
@@ -601,14 +657,27 @@ public class ComboController : MonoBehaviour
         blockActive = true;
     }
 
+    // Modify your StopBlocking method to check the flag:
     void StopBlocking()
     {
         blockStarting = false;
         blockActive = false;
         CancelInvoke(nameof(ActivateBlock));
 
-        inRecovery = true;
-        Invoke(nameof(EndRecovery), blockRecovery);
+        // Only go into recovery if block wasn't successful
+        if (!successfulBlockFlag)
+        {
+            inRecovery = true;
+            Invoke(nameof(EndRecovery), blockRecovery);
+        }
+        else
+        {
+            // Successful block - no recovery, ready to attack
+            inRecovery = false;
+            canAttack = true;
+            successfulBlockFlag = false; // Reset the flag
+            DebugLog("✓ Successful block - no recovery!");
+        }
 
         isBlocking = false;
         if (blockVisual != null) blockVisual.SetActive(false);
@@ -639,6 +708,19 @@ public class ComboController : MonoBehaviour
     {
         DebugLog("🔄 FORCED RESET (external call)");
         ResetCombo();
+    }
+
+ 
+
+    // Add this public method for the enemy to call:
+    /// <summary>
+    /// Called by enemy when attack is successfully blocked
+    /// Sets flag to bypass recovery on block release
+    /// </summary>
+    public void SetSuccessfulBlock()
+    {
+        successfulBlockFlag = true;
+        DebugLog("⚡ Successful block flag set!");
     }
 
     void OnGUI()
