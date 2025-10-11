@@ -12,6 +12,10 @@ public class AttackCollider : MonoBehaviour
     public float heavyForceMultiplier = 1.5f;
     public ForceMode forceMode = ForceMode.Impulse;
 
+    [Header("Impact Feedback")]
+    public bool useCameraShake = true;
+    public bool useHitStop = true;
+
     [Header("References")]
     public Transform forceOrigin;
 
@@ -109,10 +113,86 @@ public class AttackCollider : MonoBehaviour
             // PASS isHeavy to TakeDamage so it knows how many orbs to drop!
             health.TakeDamage(damage, isHeavy);
             Debug.Log($"✓ Hit {other.name} for {damage} damage ({(isHeavy ? "HEAVY" : "LIGHT")} attack)");
+
+            // ADD EXECUTION ENERGY ON SUCCESSFUL HIT
+            ExecutionSystem executionSystem = GetComponentInParent<ExecutionSystem>();
+            if (executionSystem != null)
+            {
+                executionSystem.AddExecutionEnergy();
+            }
+
+            // CAMERA SHAKE - only if we actually dealt damage
+            if (useCameraShake && CameraShake.Instance != null)
+            {
+                if (isHeavy)
+                {
+                    CameraShake.Instance.ShakeHeavy();
+                }
+                else
+                {
+                    CameraShake.Instance.ShakeLight();
+                }
+            }
+
+            // HIT STOP - only if we actually dealt damage
+            if (useHitStop && HitStop.Instance != null)
+            {
+                if (isHeavy)
+                {
+                    HitStop.Instance.StopHeavy();
+                }
+                else
+                {
+                    HitStop.Instance.StopLight();
+                }
+            }
         }
         else
         {
-            Debug.LogWarning($"✗ {other.name} has no Health component!");
+            // Check for DestructibleObject if no Health component
+            var destructible = other.GetComponent<DestructibleObject>();
+            if (destructible != null)
+            {
+                destructible.TakeDamage(damage, isHeavy);
+                Debug.Log($"✓ Hit DESTRUCTIBLE {other.name} for {damage} damage ({(isHeavy ? "HEAVY" : "LIGHT")} attack)");
+
+                // ADD EXECUTION ENERGY FOR DESTRUCTIBLE HITS TOO
+                ExecutionSystem executionSystem = GetComponentInParent<ExecutionSystem>();
+                if (executionSystem != null)
+                {
+                    executionSystem.AddExecutionEnergy();
+                }
+
+                // CAMERA SHAKE
+                if (useCameraShake && CameraShake.Instance != null)
+                {
+                    if (isHeavy)
+                    {
+                        CameraShake.Instance.ShakeHeavy();
+                    }
+                    else
+                    {
+                        CameraShake.Instance.ShakeLight();
+                    }
+                }
+
+                // HIT STOP
+                if (useHitStop && HitStop.Instance != null)
+                {
+                    if (isHeavy)
+                    {
+                        HitStop.Instance.StopHeavy();
+                    }
+                    else
+                    {
+                        HitStop.Instance.StopLight();
+                    }
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"✗ {other.name} has no Health or DestructibleObject component!");
+            }
         }
 
         // Try to apply force (only to objects WITHOUT NavMeshAgent)

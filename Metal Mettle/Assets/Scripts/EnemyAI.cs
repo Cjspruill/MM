@@ -22,6 +22,10 @@ public class EnemyAI : MonoBehaviour
     public float memoryDuration = 3f;
     public float visionCheckInterval = 0.2f; // How often to check vision
 
+    [Header("Alert System")]
+    public float alertRadius = 5f; // Range to alert nearby enemies
+    public LayerMask enemyMask; // What layer are other enemies on
+
     [Header("Combat Settings")]
     public BoxCollider attackHitbox;
     public MeshRenderer debugRenderer;
@@ -521,6 +525,33 @@ public class EnemyAI : MonoBehaviour
             if (showDebug)
             {
                 Debug.Log($"{gameObject.name} alerted to player!");
+            }
+        }
+
+        // Alert nearby enemies
+        AlertNearbyEnemies();
+    }
+
+    void AlertNearbyEnemies()
+    {
+        // Find all colliders in alert radius
+        Collider[] nearbyColliders = Physics.OverlapSphere(transform.position, alertRadius, enemyMask);
+
+        foreach (Collider col in nearbyColliders)
+        {
+            // Don't alert self
+            if (col.transform == transform) continue;
+
+            // Try to get EnemyAI component
+            EnemyAI nearbyEnemy = col.GetComponent<EnemyAI>();
+            if (nearbyEnemy != null && !nearbyEnemy.isChasing)
+            {
+                nearbyEnemy.AlertToPlayer();
+
+                if (showDebug)
+                {
+                    Debug.Log($"{gameObject.name} alerted {col.name} to player!");
+                }
             }
         }
     }

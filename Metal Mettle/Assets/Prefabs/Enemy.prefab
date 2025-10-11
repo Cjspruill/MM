@@ -262,12 +262,10 @@ MonoBehaviour:
   bloodOrbPrefab: {fileID: 6296041413833235312, guid: 4741c4d215dc3fe4bb1097bcf0c32e69, type: 3}
   dropBloodOnHit: 1
   dropBloodOnDeath: 1
-  bloodDropAmount: 0.05
-  bloodDropVariance: 10
   bloodDropOffset: {x: 0, y: 1.5, z: 0}
-  minLightOrbCount: 0
+  minLightOrbCount: 1
   maxLightOrbCount: 2
-  minHeavyOrbCount: 0
+  minHeavyOrbCount: 1
   maxHeavyOrbCount: 3
   alertOnDamage: 1
   damageAnimationChance: 0.1
@@ -304,6 +302,10 @@ MonoBehaviour:
   alwaysChase: 0
   memoryDuration: 3
   visionCheckInterval: 0.2
+  alertRadius: 5
+  enemyMask:
+    serializedVersion: 2
+    m_Bits: 8
   attackHitbox: {fileID: 2521031087679563329}
   debugRenderer: {fileID: 2680022142810504579}
   attackRange: 1.5
@@ -320,7 +322,7 @@ MonoBehaviour:
   useAnimationEvents: 1
   baseHitstunDuration: 0.4
   stunCooldown: 0.5
-  canBeStunnedDuringAttack: 1
+  canBeStunnedDuringAttack: 0
   avoidanceRadius: 0.5
   avoidancePriority: 50
   disableAvoidanceInCombat: 1

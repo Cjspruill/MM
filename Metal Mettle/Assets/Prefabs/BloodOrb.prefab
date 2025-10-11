@@ -171,7 +171,7 @@ MonoBehaviour:
   explosionForce: 100
   upwardForce: 200
   randomSpread: 50
-  lifetime: 60
+  lifetime: 5
 --- !u!54 &-5488572924869152737
 Rigidbody:
   m_ObjectHideFlags: 0
