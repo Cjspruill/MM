@@ -165,7 +165,7 @@ public class ExecutionSystem : MonoBehaviour
                 }
                 else
                 {
-                    fillImage.color = Color.red; // Not ready
+                    fillImage.color = Color.white; // Not ready
                 }
             }
         }

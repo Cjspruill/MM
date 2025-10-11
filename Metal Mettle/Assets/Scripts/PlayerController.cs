@@ -29,6 +29,9 @@ public class PlayerController : MonoBehaviour
     public bool allowMovementDuringBlock = false;
     public float attackMovementSpeedMultiplier = 0.3f;
 
+    [Header("Cursor Settings")]
+    public bool lockCursorOnAttack = true;
+
     private Vector3 velocity;
     private bool isGrounded;
     private bool justStoppedSprinting = false;
@@ -55,6 +58,23 @@ public class PlayerController : MonoBehaviour
         if (animator == null)
         {
             Debug.LogError("Animator component not found on " + gameObject.name);
+        }
+
+        // Subscribe to attack input
+        if (lockCursorOnAttack)
+        {
+            controls.Player.Attack.performed += OnAttackInput;
+        }
+    }
+
+    void OnAttackInput(InputAction.CallbackContext context)
+    {
+        // Lock cursor if not already locked
+        if (Cursor.lockState != CursorLockMode.Locked)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            Debug.Log("Cursor locked and hidden");
         }
     }
 
@@ -215,6 +235,10 @@ public class PlayerController : MonoBehaviour
 
     void OnDisable()
     {
+        if (lockCursorOnAttack)
+        {
+            controls.Player.Attack.performed -= OnAttackInput;
+        }
         controls.Disable();
     }
 }
