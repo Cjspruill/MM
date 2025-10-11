@@ -31,6 +31,18 @@ public class ExecutionSystem : MonoBehaviour
     public Color executionFlashColor = Color.red;
     public float flashDuration = 0.2f;
 
+    [Header("Camera Effects")]
+    public bool useCameraZoom = true;
+    public float zoomTargetFOV = 40f; // Lower = more zoomed in (default ~60)
+    public float zoomInDuration = 0.3f;
+    public float zoomOutDuration = 0.4f;
+    public AnimationCurve zoomCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+
+    public bool useChromaticAberration = true;
+    public float chromaticIntensity = 1.0f; // Max intensity
+    public float chromaticDuration = 0.5f;
+    public AnimationCurve chromaticCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+
     [Header("Audio")]
     public AudioClip executionSound;
     public float executionSoundPitch = 0.8f; // Deeper pitch for impact
@@ -46,6 +58,9 @@ public class ExecutionSystem : MonoBehaviour
     // Private references
     private BloodSystem bloodSystem;
     private Camera mainCamera;
+    private float originalFOV;
+    private UnityEngine.Rendering.Universal.ChromaticAberration chromaticAberration;
+    private UnityEngine.Rendering.Volume postProcessVolume;
     private Health nearestExecutableEnemy;
     private bool isExecuting = false;
     private InputSystem_Actions inputActions;
@@ -71,6 +86,32 @@ public class ExecutionSystem : MonoBehaviour
     {
         bloodSystem = GetComponent<BloodSystem>();
         mainCamera = Camera.main;
+
+        if (mainCamera != null)
+        {
+            originalFOV = mainCamera.fieldOfView;
+        }
+
+        // Find post-processing volume for chromatic aberration
+        if (useChromaticAberration)
+        {
+            postProcessVolume = FindObjectOfType<UnityEngine.Rendering.Volume>();
+            if (postProcessVolume != null && postProcessVolume.profile != null)
+            {
+                if (postProcessVolume.profile.TryGet(out chromaticAberration))
+                {
+                    chromaticAberration.intensity.value = 0f; // Start at 0
+                }
+                else
+                {
+                    Debug.LogWarning("Chromatic Aberration not found in post-processing volume!");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("No post-processing volume found for chromatic aberration!");
+            }
+        }
 
         if (executionPromptUI != null)
         {
@@ -236,19 +277,31 @@ public class ExecutionSystem : MonoBehaviour
             StartCoroutine(ScreenFlash());
         }
 
-        // 4. CAMERA SHAKE
+        // 4. CAMERA ZOOM
+        if (useCameraZoom && mainCamera != null)
+        {
+            StartCoroutine(CameraZoomEffect());
+        }
+
+        // 5. CHROMATIC ABERRATION
+        if (useChromaticAberration && chromaticAberration != null)
+        {
+            StartCoroutine(ChromaticAberrationEffect());
+        }
+
+        // 6. CAMERA SHAKE
         if (CameraShake.Instance != null)
         {
             CameraShake.Instance.Shake(cameraShakeDuration, cameraShakeMagnitude);
         }
 
-        // 5. SOUND EFFECT (with pitch shift for impact)
+        // 7. SOUND EFFECT (with pitch shift for impact)
         if (executionSound != null)
         {
             AudioSource.PlayClipAtPoint(executionSound, enemy.transform.position);
         }
 
-        // 6. SPAWN VFX
+        // 8. SPAWN VFX
         if (executionVFXPrefab != null)
         {
             Instantiate(executionVFXPrefab, enemy.transform.position, Quaternion.identity);
@@ -257,17 +310,17 @@ public class ExecutionSystem : MonoBehaviour
         // Wait for slow-mo to play out (real-time)
         yield return new WaitForSecondsRealtime(slowMotionDuration);
 
-        // 7. KILL ENEMY INSTANTLY
+        // 9. KILL ENEMY INSTANTLY
         enemy.TakeDamage(999999f, true); // Overkill damage
 
-        // 8. SPAWN EXTRA BLOOD ORBS
+        // 10. SPAWN EXTRA BLOOD ORBS
         SpawnExecutionBlood(enemy.transform.position);
 
-        // 9. RESTORE TIME
+        // 11. RESTORE TIME
         Time.timeScale = 1f;
         Time.fixedDeltaTime = 0.02f;
 
-        // 10. GIVE BLOOD BONUS
+        // 12. GIVE BLOOD BONUS
         if (bloodSystem != null)
         {
             bloodSystem.GainBlood(executionBloodBonus);
@@ -341,6 +394,70 @@ public class ExecutionSystem : MonoBehaviour
         }
 
         Destroy(flashObj);
+    }
+
+    IEnumerator CameraZoomEffect()
+    {
+        if (mainCamera == null) yield break;
+
+        float startFOV = mainCamera.fieldOfView;
+        float targetFOV = zoomTargetFOV;
+
+        // Zoom IN
+        float elapsed = 0f;
+        while (elapsed < zoomInDuration)
+        {
+            elapsed += Time.unscaledDeltaTime; // Unscaled for slow-mo
+            float t = zoomCurve.Evaluate(elapsed / zoomInDuration);
+            mainCamera.fieldOfView = Mathf.Lerp(startFOV, targetFOV, t);
+            yield return null;
+        }
+
+        // Hold at zoomed in state briefly
+        yield return new WaitForSecondsRealtime(0.1f);
+
+        // Zoom OUT
+        elapsed = 0f;
+        while (elapsed < zoomOutDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = zoomCurve.Evaluate(elapsed / zoomOutDuration);
+            mainCamera.fieldOfView = Mathf.Lerp(targetFOV, originalFOV, t);
+            yield return null;
+        }
+
+        // Ensure we're back to original
+        mainCamera.fieldOfView = originalFOV;
+    }
+
+    IEnumerator ChromaticAberrationEffect()
+    {
+        if (chromaticAberration == null) yield break;
+
+        float elapsed = 0f;
+        float halfDuration = chromaticDuration * 0.5f;
+
+        // Fade IN chromatic aberration
+        while (elapsed < halfDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = chromaticCurve.Evaluate(elapsed / halfDuration);
+            chromaticAberration.intensity.value = Mathf.Lerp(0f, chromaticIntensity, t);
+            yield return null;
+        }
+
+        // Fade OUT chromatic aberration
+        elapsed = 0f;
+        while (elapsed < halfDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+            float t = chromaticCurve.Evaluate(elapsed / halfDuration);
+            chromaticAberration.intensity.value = Mathf.Lerp(chromaticIntensity, 0f, t);
+            yield return null;
+        }
+
+        // Ensure it's back to 0
+        chromaticAberration.intensity.value = 0f;
     }
 
     void OnDrawGizmosSelected()

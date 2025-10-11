@@ -25,9 +25,16 @@ public class ComboController : MonoBehaviour
     public float perfectTimingWindow = 0.3f;
     public float inputBufferTime = 0.2f;
 
-    [Header("Recovery")]
-    public float lightRecovery = 0.2f;
-    public float heavyRecovery = 0.4f;
+    [Header("Recovery - Synced to Animator")]
+    [Tooltip("Uses attack animation clip length for recovery timing")]
+    public bool syncRecoveryToAnimator = true;
+
+    [Tooltip("Use recovery time as the transition blend duration back to locomotion")]
+    public bool useRecoveryAsTransition = true;
+
+    [Tooltip("Fallback if animator sync fails")]
+    public float lightRecoveryFallback = 0.2f;
+    public float heavyRecoveryFallback = 0.4f;
 
     [Header("Block")]
     public bool blockEnabled = true;
@@ -39,12 +46,24 @@ public class ComboController : MonoBehaviour
     [Tooltip("Exact names of light attack states in animator")]
     public string[] lightAttackStates = { "JAB", "CROSS", "LEAD UPPERCUT" };
 
+    [Tooltip("Recovery time for each light attack (must match array length)")]
+    public float[] lightAttackRecovery = { 0.45f, 0.40f, 0.55f };
+
     [Tooltip("Exact names of heavy attack states in animator")]
     public string[] heavyAttackStates = { "RIGHT STRAIT KNEE", "ROUNDHOUSE KICK" };
 
-    [Tooltip("How long to blend between animations (seconds)")]
-    [Range(0f, 0.5f)]
-    public float crossfadeDuration = 0.1f;
+    [Tooltip("Recovery time for each heavy attack (must match array length)")]
+    public float[] heavyAttackRecovery = { 0.60f, 0.70f };
+
+    [Header("Animation Blending")]
+    [Tooltip("Blend time when starting first attack")]
+    public float firstAttackBlend = 0.1f;
+
+    [Tooltip("Blend time for combo attacks (0 = instant)")]
+    public float comboAttackBlend = 0.05f;
+
+    [Tooltip("Force instant transitions for combos (ignores blend time)")]
+    public bool forceInstantCombos = true;
 
     [Header("Animation")]
     public bool useAnimationEvents = true;
@@ -81,6 +100,7 @@ public class ComboController : MonoBehaviour
 
     private string lastLightAttack = "";
     private string lastHeavyAttack = "";
+    private string lastPlayedState = "";
 
     void Start()
     {
@@ -103,11 +123,30 @@ public class ComboController : MonoBehaviour
         else
         {
             DebugLog("ComboController initialized");
+            DebugLog($"📊 Recovery Settings:");
+            DebugLog($"   - syncRecoveryToAnimator: {syncRecoveryToAnimator}");
+            DebugLog($"   - lightRecoveryFallback: {lightRecoveryFallback}");
+            DebugLog($"   - heavyRecoveryFallback: {heavyRecoveryFallback}");
+            DebugLog($"   - attackCooldown: {attackCooldown}");
+            DebugLog($"   - Light attacks: {lightAttackStates.Length} states, {lightAttackRecovery.Length} recovery times");
+            DebugLog($"   - Heavy attacks: {heavyAttackStates.Length} states, {heavyAttackRecovery.Length} recovery times");
         }
     }
 
     void Update()
     {
+        // Animation state monitoring for debugging
+        if (animator != null && enableDebugLogs)
+        {
+            AnimatorStateInfo currentState = animator.GetCurrentAnimatorStateInfo(0);
+            AnimatorTransitionInfo transitionInfo = animator.GetAnimatorTransitionInfo(0);
+
+            if (transitionInfo.fullPathHash != 0) // In transition
+            {
+                DebugLog($"🎬 TRANSITIONING: Progress {transitionInfo.normalizedTime:F2} | Duration: {transitionInfo.duration:F2}s");
+            }
+        }
+
         bool attackHeld = controls.Player.Attack.IsPressed();
         bool absorbHeld = controls.Player.Absorb.IsPressed();
 
@@ -376,7 +415,6 @@ public class ComboController : MonoBehaviour
 
         float speedModifier = bloodSystem != null ? bloodSystem.GetAttackSpeedModifier() : 1f;
         float adjustedCooldown = attackCooldown / speedModifier;
-        float adjustedRecovery = (isHeavy ? heavyRecovery : lightRecovery) / speedModifier;
 
         isAttacking = true;
         waitingForAnimationComplete = true;
@@ -388,24 +426,39 @@ public class ComboController : MonoBehaviour
 
         DebugLog($"   STATE SET: isAttacking={isAttacking}, lastAttackTime={lastAttackTime}, step={comboStep}");
 
-        // Play specific animation state with smooth crossfade
-        if (animator != null)
+        // Get the animation state name
+        string stateName = GetAttackStateName(isHeavyCombo, comboStep);
+        lastPlayedState = stateName; // Store for later use in deactivate
+
+        // Play specific animation state with smart blending
+        if (animator != null && !string.IsNullOrEmpty(stateName))
         {
-            string stateName = GetAttackStateName(isHeavyCombo, comboStep);
+            // Set attacking flag for animator
+            animator.SetBool("IsAttacking", true);
 
-            if (!string.IsNullOrEmpty(stateName))
+            // First attack blends smoothly, combos are snappier
+            float blendTime = (comboStep == 1) ? firstAttackBlend : comboAttackBlend;
+
+            // Force instant for combos if enabled
+            if (comboStep > 1 && forceInstantCombos)
             {
-                // Crossfade to the state instead of instant play
-                animator.CrossFade(stateName, crossfadeDuration, 0, 0f);
-                animator.SetFloat("AttackSpeed", speedModifier);
-                animator.speed = speedModifier;
-
-                DebugLog($"   🎬 CROSSFADING TO: {stateName} over {crossfadeDuration}s (Speed={speedModifier})");
+                // Instant transition - no blend at all
+                animator.Play(stateName, 0, 0f);
+                DebugLog($"   🎬 INSTANT PLAY: {stateName} (Speed={speedModifier})");
             }
             else
             {
-                Debug.LogError($"❌ No animation state name for combo step {comboStep}!");
+                // Crossfade for first attack or if blend time is set
+                animator.CrossFade(stateName, blendTime, 0, 0f);
+                DebugLog($"   🎬 CROSSFADING TO: {stateName} over {blendTime}s (Speed={speedModifier})");
             }
+
+            animator.SetFloat("AttackSpeed", speedModifier);
+            animator.speed = speedModifier;
+        }
+        else
+        {
+            Debug.LogError($"❌ No animation state name for combo step {comboStep}!");
         }
 
         if (!useAnimationEvents)
@@ -419,96 +472,241 @@ public class ComboController : MonoBehaviour
         }
 
         float comboInputWindow = Mathf.Max(0.2f, adjustedCooldown * 0.4f);
+        DebugLog($"   ⏰ Combo window opens in: {comboInputWindow:F2}s (at time {Time.time + comboInputWindow:F2})");
         Invoke(nameof(EnableNextAttack), comboInputWindow);
 
         inRecovery = true;
-        float totalRecovery = adjustedCooldown + adjustedRecovery;
+
+        // Get recovery time from animator transition or use fallback
+        float recoveryTime = GetRecoveryTimeFromAnimator(isHeavy, stateName);
+        float totalRecovery = adjustedCooldown + recoveryTime;
+
+        DebugLog($"   💊 Recovery Breakdown:");
+        DebugLog($"      - Base Recovery: {recoveryTime:F2}s");
+        DebugLog($"      - Adjusted Cooldown: {adjustedCooldown:F2}s");
+        DebugLog($"      - Total Recovery: {totalRecovery:F2}s");
+        DebugLog($"      - Will end at time: {Time.time + totalRecovery:F2}");
+
         Invoke(nameof(EndRecovery), totalRecovery);
 
         Invoke(nameof(ClearProcessingFlag), 0.1f);
     }
 
     /// <summary>
-/// Gets a random animator state name for the given combo step
-/// Both light and heavy attacks are randomly selected from available animations
-/// Avoids repeating the same attack twice in a row
-/// </summary>
-string GetAttackStateName(bool isHeavy, int step)
-{
-    if (isHeavy)
+    /// Gets recovery time - tries animator sync, then manual array, then fallback
+    /// </summary>
+    float GetRecoveryTimeFromAnimator(bool isHeavy, string currentStateName)
     {
-        // Heavy attacks are RANDOMIZED - pick any available heavy attack
-        if (heavyAttackStates.Length > 0)
+        if (!syncRecoveryToAnimator || animator == null)
         {
-            string selectedAttack;
-            
-            if (heavyAttackStates.Length == 1)
+            // Try to get from manual arrays first
+            float manualRecovery = GetManualRecoveryTime(isHeavy, currentStateName);
+            if (manualRecovery > 0)
             {
-                // Only one option
-                selectedAttack = heavyAttackStates[0];
+                DebugLog($"   📋 Using manual recovery: {manualRecovery:F2}s");
+                return manualRecovery;
             }
-            else if (step == 1 || string.IsNullOrEmpty(lastHeavyAttack))
-            {
-                // First attack - any is fine
-                int randomIndex = Random.Range(0, heavyAttackStates.Length);
-                selectedAttack = heavyAttackStates[randomIndex];
-            }
-            else
-            {
-                // Not first attack - avoid repeating last attack
-                int attempts = 0;
-                do
-                {
-                    int randomIndex = Random.Range(0, heavyAttackStates.Length);
-                    selectedAttack = heavyAttackStates[randomIndex];
-                    attempts++;
-                } while (selectedAttack == lastHeavyAttack && attempts < 10);
-            }
-            
-            lastHeavyAttack = selectedAttack;
-            DebugLog($"   🎲 Random heavy animation: step={step}, state={selectedAttack}");
-            return selectedAttack;
+
+            float fallback = isHeavy ? heavyRecoveryFallback : lightRecoveryFallback;
+            DebugLog($"   ⚠️ Sync disabled - using fallback: {fallback:F2}s");
+            return fallback;
         }
-    }
-    else
-    {
-        // Light attacks are RANDOMIZED - pick any available light attack
-        if (lightAttackStates.Length > 0)
+
+        // Try to get clip from animator
+        AnimationClip clip = GetAnimationClip(currentStateName);
+
+        if (clip != null)
         {
-            string selectedAttack;
-            
-            if (lightAttackStates.Length == 1)
-            {
-                // Only one option
-                selectedAttack = lightAttackStates[0];
-            }
-            else if (step == 1 || string.IsNullOrEmpty(lastLightAttack))
-            {
-                // First attack - any is fine
-                int randomIndex = Random.Range(0, lightAttackStates.Length);
-                selectedAttack = lightAttackStates[randomIndex];
-            }
-            else
-            {
-                // Not first attack - avoid repeating last attack
-                int attempts = 0;
-                do
-                {
-                    int randomIndex = Random.Range(0, lightAttackStates.Length);
-                    selectedAttack = lightAttackStates[randomIndex];
-                    attempts++;
-                } while (selectedAttack == lastLightAttack && attempts < 10);
-            }
-            
-            lastLightAttack = selectedAttack;
-            DebugLog($"   🎲 Random light animation: step={step}, state={selectedAttack}");
-            return selectedAttack;
+            float clipLength = clip.length;
+            DebugLog($"   ✓ Found clip '{clip.name}' - Using length: {clipLength:F2}s");
+            return clipLength;
         }
+
+        // Try manual arrays as backup
+        float manualTime = GetManualRecoveryTime(isHeavy, currentStateName);
+        if (manualTime > 0)
+        {
+            DebugLog($"   📋 Clip not found, using manual recovery: {manualTime:F2}s");
+            return manualTime;
+        }
+
+        // Final fallback
+        float fallbackValue = isHeavy ? heavyRecoveryFallback : lightRecoveryFallback;
+        DebugLog($"   ❌ No recovery found - using fallback: {fallbackValue:F2}s");
+        return fallbackValue;
     }
 
-    Debug.LogError($"❌ No animation found for isHeavy={isHeavy}, step={step}!");
-    return null;
-}
+    /// <summary>
+    /// Gets manual recovery time from the arrays if they're set up correctly
+    /// </summary>
+    float GetManualRecoveryTime(bool isHeavy, string stateName)
+    {
+        if (isHeavy)
+        {
+            if (heavyAttackRecovery != null && heavyAttackRecovery.Length == heavyAttackStates.Length)
+            {
+                for (int i = 0; i < heavyAttackStates.Length; i++)
+                {
+                    if (heavyAttackStates[i] == stateName)
+                    {
+                        return heavyAttackRecovery[i];
+                    }
+                }
+            }
+        }
+        else
+        {
+            if (lightAttackRecovery != null && lightAttackRecovery.Length == lightAttackStates.Length)
+            {
+                for (int i = 0; i < lightAttackStates.Length; i++)
+                {
+                    if (lightAttackStates[i] == stateName)
+                    {
+                        return lightAttackRecovery[i];
+                    }
+                }
+            }
+        }
+
+        return 0f; // Not found
+    }
+
+    /// <summary>
+    /// Gets the AnimationClip for a given state name
+    /// Searches through all animator clips with detailed logging
+    /// </summary>
+    AnimationClip GetAnimationClip(string stateName)
+    {
+        if (animator == null || string.IsNullOrEmpty(stateName))
+        {
+            DebugLog($"   ❌ Animator or state name is null");
+            return null;
+        }
+
+        // Get all clips from the animator
+        AnimationClip[] clips = animator.runtimeAnimatorController.animationClips;
+
+        DebugLog($"   🔍 Searching for '{stateName}' in {clips.Length} clips...");
+
+        // Try exact match first
+        foreach (var clip in clips)
+        {
+            if (clip.name == stateName)
+            {
+                DebugLog($"   ✓ EXACT MATCH: '{clip.name}' = {clip.length:F2}s");
+                return clip;
+            }
+        }
+
+        // Try partial match (case-insensitive)
+        foreach (var clip in clips)
+        {
+            if (clip.name.ToUpper().Contains(stateName.ToUpper()))
+            {
+                DebugLog($"   ⚡ PARTIAL MATCH: '{clip.name}' contains '{stateName}' = {clip.length:F2}s");
+                return clip;
+            }
+        }
+
+        // List all available clips for debugging
+        DebugLog($"   ❌ No match found. Available clips:");
+        foreach (var clip in clips)
+        {
+            DebugLog($"      - '{clip.name}' ({clip.length:F2}s)");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Gets a random animator state name for the given combo step
+    /// Both light and heavy attacks are randomly selected from available animations
+    /// Avoids repeating the same attack twice in a row
+    /// </summary>
+    string GetAttackStateName(bool isHeavy, int step)
+    {
+        if (isHeavy)
+        {
+            // Heavy attacks are RANDOMIZED - pick any available heavy attack
+            if (heavyAttackStates.Length > 0)
+            {
+                string selectedAttack;
+
+                if (heavyAttackStates.Length == 1)
+                {
+                    // Only one option
+                    selectedAttack = heavyAttackStates[0];
+                }
+                else if (step == 1 || string.IsNullOrEmpty(lastHeavyAttack))
+                {
+                    // First attack - any is fine
+                    int randomIndex = Random.Range(0, heavyAttackStates.Length);
+                    selectedAttack = heavyAttackStates[randomIndex];
+                }
+                else
+                {
+                    // Not first attack - avoid repeating last attack
+                    int attempts = 0;
+                    do
+                    {
+                        int randomIndex = Random.Range(0, heavyAttackStates.Length);
+                        selectedAttack = heavyAttackStates[randomIndex];
+                        attempts++;
+                    } while (selectedAttack == lastHeavyAttack && attempts < 10);
+                }
+
+                lastHeavyAttack = selectedAttack;
+                DebugLog($"   🎲 Random heavy animation: step={step}, state={selectedAttack}");
+                return selectedAttack;
+            }
+        }
+        else
+        {
+            // Light attacks are RANDOMIZED - pick any available light attack
+            if (lightAttackStates.Length > 0)
+            {
+                string selectedAttack;
+
+                if (lightAttackStates.Length == 1)
+                {
+                    // Only one option
+                    selectedAttack = lightAttackStates[0];
+                }
+                else if (step == 1 || string.IsNullOrEmpty(lastLightAttack))
+                {
+                    // First attack - any is fine
+                    int randomIndex = Random.Range(0, lightAttackStates.Length);
+                    selectedAttack = lightAttackStates[randomIndex];
+                }
+                else
+                {
+                    // Not first attack - avoid repeating last attack
+                    int attempts = 0;
+                    do
+                    {
+                        int randomIndex = Random.Range(0, lightAttackStates.Length);
+                        selectedAttack = lightAttackStates[randomIndex];
+                        attempts++;
+                    } while (selectedAttack == lastLightAttack && attempts < 10);
+                }
+
+                lastLightAttack = selectedAttack;
+                DebugLog($"   🎲 Random light animation: step={step}, state={selectedAttack}");
+                return selectedAttack;
+            }
+        }
+
+        Debug.LogError($"❌ No animation found for isHeavy={isHeavy}, step={step}!");
+        return null;
+    }
+
+    /// <summary>
+    /// Gets the last played state name for recovery calculations
+    /// </summary>
+    string GetLastPlayedStateName()
+    {
+        return lastPlayedState;
+    }
 
     void ClearProcessingFlag()
     {
@@ -560,6 +758,25 @@ string GetAttackStateName(bool isHeavy, int step)
         isAttacking = false;
         waitingForAnimationComplete = false;
         CancelInvoke(nameof(ForceDeactivateHitbox));
+
+        // Get recovery time to use as transition duration
+        if (useRecoveryAsTransition && animator != null)
+        {
+            float recoveryTime = GetRecoveryTimeFromAnimator(currentAttackIsHeavy, GetLastPlayedStateName());
+
+            // Transition back to locomotion with recovery time as blend duration
+            animator.CrossFade("Locomotion", recoveryTime, 0);
+            DebugLog($"   🔄 Transitioning to Locomotion over {recoveryTime:F2}s");
+
+            // Also set IsAttacking to false for safety
+            animator.SetBool("IsAttacking", false);
+        }
+        else if (animator != null)
+        {
+            // Standard immediate transition
+            animator.SetBool("IsAttacking", false);
+            DebugLog($"   ✓ Set IsAttacking = false");
+        }
     }
 
     void ForceDeactivateHitbox()
@@ -571,13 +788,13 @@ string GetAttackStateName(bool isHeavy, int step)
     void EnableNextAttack()
     {
         canAttack = true;
-        DebugLog($"✓ Window OPEN (Step:{comboStep})");
+        DebugLog($"✓ Combo window OPEN (Step:{comboStep}) at time {Time.time:F2}");
     }
 
     void EndRecovery()
     {
         inRecovery = false;
-        DebugLog($"✓ Recovery ended (Step:{comboStep})");
+        DebugLog($"✓ Recovery ENDED (Step:{comboStep}) at time {Time.time:F2}");
     }
 
     void ResetCombo()
@@ -657,7 +874,6 @@ string GetAttackStateName(bool isHeavy, int step)
         blockActive = true;
     }
 
-    // Modify your StopBlocking method to check the flag:
     void StopBlocking()
     {
         blockStarting = false;
@@ -710,9 +926,6 @@ string GetAttackStateName(bool isHeavy, int step)
         ResetCombo();
     }
 
- 
-
-    // Add this public method for the enemy to call:
     /// <summary>
     /// Called by enemy when attack is successfully blocked
     /// Sets flag to bypass recovery on block release
@@ -764,40 +977,3 @@ string GetAttackStateName(bool isHeavy, int step)
         GUILayout.EndArea();
     }
 }
-
-/*
-=== THE CRITICAL FIX - Lines 271-345 ===
-
-THE BUG:
-When doing Light→Light→Heavy, the code was setting isHeavyCombo = true
-BEFORE checking justSwitchedToHeavy, so the check (!isHeavyCombo) was always false.
-
-THE FIX:
-1. Store original value: bool wasHeavyCombo = isHeavyCombo
-2. Don't set isHeavyCombo = true when detecting heavy finisher (yet)
-3. Use wasHeavyCombo to calculate justSwitchedToHeavy
-4. Set isHeavyCombo = true AFTER determining max combo
-
-NOW IT WORKS:
-- Light (step 1): wasHeavyCombo = false
-- Light (step 2): wasHeavyCombo = false  
-- Heavy (step 3): isHeavy=true, wasHeavyCombo=false → justSwitchedToHeavy=true
-  → Uses maxLightCombo (3) → ALLOWED!
-
-=== WHAT YOU'LL SEE IN DEBUG ===
-
-When doing Tap→Tap→Hold:
-[Combo] === TriggerAttack === Heavy:true, Step:2, IsHeavyCombo:false
-[Combo]    Continuing combo: isHeavy=true, wasHeavyCombo=false, tryingToMix=true
-[Combo] 💥 Heavy finisher! Switching from light to heavy
-[Combo]    Max combo calculation: justSwitchedToHeavy=true, wasHeavyCombo=false, step=3
-[Combo]    💥 Heavy finisher on light combo - using light max (3)
-[Combo] ⚔️ Attack 3/3 - IsHeavyCombo:true
-
-=== INSPECTOR SETTINGS ===
-- allowMixedCombos = TRUE (must be enabled!)
-- maxLightCombo = 3
-- maxHeavyCombo = 2
-- heavyHoldTime = 0.3
-
-*/

@@ -11025,7 +11025,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 4201
+  m_VersionIndex: 4207
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -13578,6 +13578,7 @@ MonoBehaviour:
   allowMovementDuringAttack: 0
   allowMovementDuringBlock: 0
   attackMovementSpeedMultiplier: 0.3
+  lockCursorOnAttack: 1
 --- !u!114 &3577213553172988952
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13596,16 +13597,16 @@ MonoBehaviour:
   animator: {fileID: 3793962330161150974}
   maxLightCombo: 3
   maxHeavyCombo: 2
-  heavyHoldTime: 0.3
+  heavyHoldTime: 0.2
   allowMixedCombos: 1
   attackDuration: 0.3
-  attackCooldown: 0.25
+  attackCooldown: 0.2
   comboWindow: 1
-  comboEndCooldown: 0.5
+  comboEndCooldown: 0
   perfectTimingWindow: 0.3
-  inputBufferTime: 0.2
-  lightRecovery: 0.2
-  heavyRecovery: 0.4
+  inputBufferTime: 0.35
+  lightRecovery: 0.05
+  heavyRecovery: 0.1
   blockEnabled: 1
   blockVisual: {fileID: 60657931445366010}
   blockStartupTime: 0.25
@@ -13625,7 +13626,7 @@ MonoBehaviour:
   - RIGHT STRAIT KNEE
   - ROUNDHOUSE KICK
   - SWITCH KICK
-  crossfadeDuration: 0.1
+  crossfadeDuration: 0.02
   useAnimationEvents: 1
   showDebugHitbox: 0
   lightColors:
