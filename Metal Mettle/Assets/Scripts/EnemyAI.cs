@@ -556,5 +556,7 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
+    // Public getters for ExecutionSystem
     public bool IsAttacking() => isAttacking;
+    public bool IsChasing() => isChasing;
 }

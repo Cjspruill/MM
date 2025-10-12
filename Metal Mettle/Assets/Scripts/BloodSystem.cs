@@ -40,13 +40,15 @@ public class BloodSystem : MonoBehaviour
 
     [Header("Death Settings")]
     public bool enableDeath = true;
-    public bool useRagdollOnDeath = true; // NEW
+    public bool useRagdollOnDeath = true;
     public float deathDelay = 2f;
     public string deathSceneName = "";
     public GameObject deathScreenUI;
 
     [Header("References")]
-    public RagdollController ragdollController; // NEW
+    public RagdollController ragdollController;
+    public ObjectiveController objectiveController; // NEW
+    public MaskController maskController; // NEW
 
     [Header("Events")]
     public UnityEvent onBloodDepleted;
@@ -68,6 +70,18 @@ public class BloodSystem : MonoBehaviour
         if (ragdollController == null)
         {
             ragdollController = GetComponent<RagdollController>();
+        }
+
+        // Auto-find objective controller if not assigned
+        if (objectiveController == null)
+        {
+            objectiveController = FindObjectOfType<ObjectiveController>();
+        }
+
+        // Auto-find mask controller if not assigned
+        if (maskController == null)
+        {
+            maskController = GetComponent<MaskController>();
         }
 
         if (deathScreenUI != null)
@@ -258,6 +272,29 @@ public class BloodSystem : MonoBehaviour
             Debug.Log("Handling respawn...");
         }
 
+        // Reset objectives before respawning
+        if (objectiveController != null)
+        {
+            objectiveController.ResetObjectives();
+
+            if (showDebugLogs)
+            {
+                Debug.Log("Objectives reset on respawn");
+            }
+        }
+
+        // Reset mask pieces before respawning
+        if (maskController != null)
+        {
+            maskController.ResetMask();
+
+            if (showDebugLogs)
+            {
+                Debug.Log("Mask pieces reset on respawn");
+            }
+        }
+
+        // Reload scene
         if (string.IsNullOrEmpty(deathSceneName))
         {
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);

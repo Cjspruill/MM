@@ -70,7 +70,7 @@ public class PlayerController : MonoBehaviour
     void OnAttackInput(InputAction.CallbackContext context)
     {
         // Lock cursor if not already locked
-        if (Cursor.lockState != CursorLockMode.Locked)
+        if (Cursor.lockState != CursorLockMode.Locked && !PauseController.Instance.IsPaused())
         {
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;

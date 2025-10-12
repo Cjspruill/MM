@@ -9,6 +9,13 @@ public class ExecutionSystem : MonoBehaviour
     public float executionHealthThreshold = 0.25f; // 25% health or less
     public LayerMask enemyMask;
 
+    [Header("Stealth Execution")]
+    public bool allowStealthExecutions = true;
+    public float stealthExecutionRange = 2f; // Closer range for stealth
+    public float stealthExecutionAngle = 90f; // Must be behind enemy (90 = back half)
+    public bool stealthRequiresEnergy = false; // Can stealth execute without energy
+    public float stealthExecutionBloodBonus = 75f; // More blood for stealth kills
+
     [Header("Energy Requirements")]
     public float maxExecutionEnergy = 100f;
     public float requiredEnergy = 100f; // How much energy needed to execute
@@ -31,6 +38,11 @@ public class ExecutionSystem : MonoBehaviour
     public Color executionFlashColor = Color.red;
     public float flashDuration = 0.2f;
 
+    [Header("Stealth Visual Effects")]
+    public Color stealthFlashColor = new Color(0.5f, 0f, 0.5f); // Purple for stealth
+    public GameObject stealthVFXPrefab; // Different effect for stealth kills
+    public float stealthSlowMotionScale = 0.2f; // Even slower for stealth
+
     [Header("Camera Effects")]
     public bool useCameraZoom = true;
     public float zoomTargetFOV = 40f; // Lower = more zoomed in (default ~60)
@@ -45,10 +57,17 @@ public class ExecutionSystem : MonoBehaviour
 
     [Header("Audio")]
     public AudioClip executionSound;
+    public AudioClip stealthExecutionSound; // Different sound for stealth
     public float executionSoundPitch = 0.8f; // Deeper pitch for impact
+
+    [Header("Animation")]
+    public string executionStateName = "Execution"; // Name of execution animation state
+    public string stealthExecutionStateName = "StealthExecution"; // Stealth execution animation
+    public float executionBlendTime = 0.1f; // Blend time for transition
 
     [Header("UI")]
     public GameObject executionPromptUI; // "Press E to Execute" prompt
+    public GameObject stealthExecutionPromptUI; // "Press E to Assassinate" prompt
     public UnityEngine.UI.Slider energyBarSlider; // Energy bar slider
     public float promptFadeSpeed = 5f;
 
@@ -57,11 +76,13 @@ public class ExecutionSystem : MonoBehaviour
 
     // Private references
     private BloodSystem bloodSystem;
+    private Animator playerAnimator;
     private Camera mainCamera;
     private float originalFOV;
     private UnityEngine.Rendering.Universal.ChromaticAberration chromaticAberration;
     private UnityEngine.Rendering.Volume postProcessVolume;
     private Health nearestExecutableEnemy;
+    private Health nearestStealthExecutableEnemy;
     private bool isExecuting = false;
     private InputSystem_Actions inputActions;
 
@@ -85,6 +106,7 @@ public class ExecutionSystem : MonoBehaviour
     void Start()
     {
         bloodSystem = GetComponent<BloodSystem>();
+        playerAnimator = GetComponent<Animator>();
         mainCamera = Camera.main;
 
         if (mainCamera != null)
@@ -95,7 +117,7 @@ public class ExecutionSystem : MonoBehaviour
         // Find post-processing volume for chromatic aberration
         if (useChromaticAberration)
         {
-            postProcessVolume = FindObjectOfType<UnityEngine.Rendering.Volume>();
+            postProcessVolume = FindFirstObjectByType<UnityEngine.Rendering.Volume>();
             if (postProcessVolume != null && postProcessVolume.profile != null)
             {
                 if (postProcessVolume.profile.TryGet(out chromaticAberration))
@@ -118,6 +140,11 @@ public class ExecutionSystem : MonoBehaviour
             executionPromptUI.SetActive(false);
         }
 
+        if (stealthExecutionPromptUI != null)
+        {
+            stealthExecutionPromptUI.SetActive(false);
+        }
+
         UpdateEnergyBar();
     }
 
@@ -133,30 +160,52 @@ public class ExecutionSystem : MonoBehaviour
             UpdateEnergyBar();
         }
 
-        // Find executable enemy
+        // Find executable enemies (both types)
         nearestExecutableEnemy = FindExecutableEnemy();
+        nearestStealthExecutableEnemy = FindStealthExecutableEnemy();
 
-        // Check if execution is ready (energy + cooldown)
+        // Stealth execution takes priority if available
+        bool canStealthExecute = nearestStealthExecutableEnemy != null &&
+                                 (stealthRequiresEnergy ? currentExecutionEnergy >= requiredEnergy : true);
+
+        // Regular execution check
         bool hasEnoughEnergy = currentExecutionEnergy >= requiredEnergy;
         bool cooldownReady = Time.time - lastExecutionTime >= executionCooldown;
         bool canExecute = hasEnoughEnergy && cooldownReady && nearestExecutableEnemy != null;
 
-        // Show/hide prompt based on all conditions
+        // Show appropriate prompt
         if (executionPromptUI != null)
         {
-            executionPromptUI.SetActive(canExecute);
+            executionPromptUI.SetActive(canExecute && nearestStealthExecutableEnemy == null);
+        }
+
+        if (stealthExecutionPromptUI != null)
+        {
+            stealthExecutionPromptUI.SetActive(canStealthExecute);
         }
     }
 
     void OnExecutionPerformed(InputAction.CallbackContext context)
     {
-        // Check all requirements
+        // Stealth execution takes priority
+        if (nearestStealthExecutableEnemy != null)
+        {
+            bool canStealthExecute = stealthRequiresEnergy ? currentExecutionEnergy >= requiredEnergy : true;
+
+            if (!isExecuting && canStealthExecute)
+            {
+                ExecuteEnemy(nearestStealthExecutableEnemy, true);
+                return;
+            }
+        }
+
+        // Regular execution
         bool hasEnoughEnergy = currentExecutionEnergy >= requiredEnergy;
         bool cooldownReady = Time.time - lastExecutionTime >= executionCooldown;
 
         if (!isExecuting && nearestExecutableEnemy != null && hasEnoughEnergy && cooldownReady)
         {
-            ExecuteEnemy(nearestExecutableEnemy);
+            ExecuteEnemy(nearestExecutableEnemy, false);
         }
         else if (!cooldownReady && showDebug)
         {
@@ -241,29 +290,97 @@ public class ExecutionSystem : MonoBehaviour
         return closestExecutable;
     }
 
-    void ExecuteEnemy(Health enemy)
+    Health FindStealthExecutableEnemy()
+    {
+        if (!allowStealthExecutions) return null;
+
+        Collider[] nearbyEnemies = Physics.OverlapSphere(transform.position, stealthExecutionRange, enemyMask);
+
+        Health closestExecutable = null;
+        float closestDistance = stealthExecutionRange;
+
+        foreach (Collider enemyCol in nearbyEnemies)
+        {
+            EnemyAI enemyAI = enemyCol.GetComponent<EnemyAI>();
+            Health enemyHealth = enemyCol.GetComponent<Health>();
+
+            if (enemyAI != null && enemyHealth != null && !enemyHealth.IsDead())
+            {
+                // Must be unaware (not chasing and not attacking)
+                if (!enemyAI.IsChasing() && !enemyAI.IsAttacking())
+                {
+                    // Check if player is behind enemy
+                    Vector3 directionToPlayer = (transform.position - enemyCol.transform.position).normalized;
+                    float angleToPlayer = Vector3.Angle(enemyCol.transform.forward, directionToPlayer);
+
+                    // If angle > 90, player is in back half
+                    if (angleToPlayer >= (180f - stealthExecutionAngle))
+                    {
+                        float distance = Vector3.Distance(transform.position, enemyCol.transform.position);
+                        if (distance < closestDistance)
+                        {
+                            closestDistance = distance;
+                            closestExecutable = enemyHealth;
+                        }
+                    }
+                }
+            }
+        }
+
+        return closestExecutable;
+    }
+
+    void ExecuteEnemy(Health enemy, bool isStealth)
     {
         if (isExecuting) return;
 
-        StartCoroutine(ExecutionSequence(enemy));
+        StartCoroutine(ExecutionSequence(enemy, isStealth));
     }
 
-    IEnumerator ExecutionSequence(Health enemy)
+    IEnumerator ExecutionSequence(Health enemy, bool isStealth)
     {
         isExecuting = true;
 
-        // Consume energy and set cooldown
-        currentExecutionEnergy = 0f;
+        // Consume energy and set cooldown (stealth might not require energy)
+        if (isStealth && !stealthRequiresEnergy)
+        {
+            // Don't consume energy for stealth
+        }
+        else
+        {
+            currentExecutionEnergy = 0f;
+        }
+
         lastExecutionTime = Time.time;
         UpdateEnergyBar();
 
         if (showDebug)
         {
-            Debug.Log($"🗡️ EXECUTING {enemy.gameObject.name}!");
+            Debug.Log($"🗡️ {(isStealth ? "STEALTH " : "")}EXECUTING {enemy.gameObject.name}!");
         }
 
-        // 1. SLOW MOTION
-        Time.timeScale = slowMotionScale;
+        // PLAY EXECUTION ANIMATION IMMEDIATELY
+        if (playerAnimator != null)
+        {
+            // Reset combo if ComboController exists
+            ComboController comboController = GetComponent<ComboController>();
+            if (comboController != null)
+            {
+                comboController.ForceResetCombo();
+            }
+
+            // Play appropriate animation
+            string animationName = isStealth ? stealthExecutionStateName : executionStateName;
+            playerAnimator.Play(animationName, 0, 0f);
+
+            if (showDebug)
+            {
+                Debug.Log($"🎬 Playing execution animation: {animationName}");
+            }
+        }
+
+        // 1. SLOW MOTION (different speed for stealth)
+        Time.timeScale = isStealth ? stealthSlowMotionScale : slowMotionScale;
         Time.fixedDeltaTime = 0.02f * Time.timeScale; // Keep physics stable
 
         // 2. FACE ENEMY
@@ -271,10 +388,10 @@ public class ExecutionSystem : MonoBehaviour
         directionToEnemy.y = 0;
         transform.rotation = Quaternion.LookRotation(directionToEnemy);
 
-        // 3. SCREEN FLASH
+        // 3. SCREEN FLASH (different color for stealth)
         if (mainCamera != null)
         {
-            StartCoroutine(ScreenFlash());
+            StartCoroutine(ScreenFlash(isStealth ? stealthFlashColor : executionFlashColor));
         }
 
         // 4. CAMERA ZOOM
@@ -295,16 +412,18 @@ public class ExecutionSystem : MonoBehaviour
             CameraShake.Instance.Shake(cameraShakeDuration, cameraShakeMagnitude);
         }
 
-        // 7. SOUND EFFECT (with pitch shift for impact)
-        if (executionSound != null)
+        // 7. SOUND EFFECT (different sound for stealth)
+        AudioClip soundToPlay = isStealth && stealthExecutionSound != null ? stealthExecutionSound : executionSound;
+        if (soundToPlay != null)
         {
-            AudioSource.PlayClipAtPoint(executionSound, enemy.transform.position);
+            AudioSource.PlayClipAtPoint(soundToPlay, enemy.transform.position);
         }
 
-        // 8. SPAWN VFX
-        if (executionVFXPrefab != null)
+        // 8. SPAWN VFX (different effect for stealth)
+        GameObject vfxToSpawn = isStealth && stealthVFXPrefab != null ? stealthVFXPrefab : executionVFXPrefab;
+        if (vfxToSpawn != null)
         {
-            Instantiate(executionVFXPrefab, enemy.transform.position, Quaternion.identity);
+            Instantiate(vfxToSpawn, enemy.transform.position, Quaternion.identity);
         }
 
         // Wait for slow-mo to play out (real-time)
@@ -320,13 +439,15 @@ public class ExecutionSystem : MonoBehaviour
         Time.timeScale = 1f;
         Time.fixedDeltaTime = 0.02f;
 
-        // 12. GIVE BLOOD BONUS
+        // 12. GIVE BLOOD BONUS (more for stealth)
         if (bloodSystem != null)
         {
-            bloodSystem.GainBlood(executionBloodBonus);
+            float bonusAmount = isStealth ? stealthExecutionBloodBonus : executionBloodBonus;
+            bloodSystem.GainBlood(bonusAmount);
+
             if (showDebug)
             {
-                Debug.Log($"💉 Execution bonus: +{executionBloodBonus} blood!");
+                Debug.Log($"💉 {(isStealth ? "Stealth " : "")}Execution bonus: +{bonusAmount} blood!");
             }
         }
 
@@ -362,14 +483,14 @@ public class ExecutionSystem : MonoBehaviour
         }
     }
 
-    IEnumerator ScreenFlash()
+    IEnumerator ScreenFlash(Color flashColor)
     {
         // Create a full-screen image to flash
         GameObject flashObj = new GameObject("ExecutionFlash");
         flashObj.transform.SetParent(mainCamera.transform);
 
         UnityEngine.UI.Image flashImage = flashObj.AddComponent<UnityEngine.UI.Image>();
-        flashImage.color = executionFlashColor;
+        flashImage.color = flashColor;
 
         Canvas canvas = flashObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -382,8 +503,8 @@ public class ExecutionSystem : MonoBehaviour
 
         // Fade out
         float elapsed = 0f;
-        Color startColor = executionFlashColor;
-        Color endColor = new Color(executionFlashColor.r, executionFlashColor.g, executionFlashColor.b, 0f);
+        Color startColor = flashColor;
+        Color endColor = new Color(flashColor.r, flashColor.g, flashColor.b, 0f);
 
         while (elapsed < flashDuration)
         {
@@ -466,11 +587,25 @@ public class ExecutionSystem : MonoBehaviour
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, executionRange);
 
+        // Draw stealth execution range
+        if (allowStealthExecutions)
+        {
+            Gizmos.color = new Color(0.5f, 0f, 0.5f, 0.3f); // Purple, transparent
+            Gizmos.DrawWireSphere(transform.position, stealthExecutionRange);
+        }
+
         // Draw line to executable enemy
         if (Application.isPlaying && nearestExecutableEnemy != null)
         {
             Gizmos.color = Color.red;
             Gizmos.DrawLine(transform.position, nearestExecutableEnemy.transform.position);
+        }
+
+        // Draw line to stealth executable enemy
+        if (Application.isPlaying && nearestStealthExecutableEnemy != null)
+        {
+            Gizmos.color = new Color(0.5f, 0f, 0.5f); // Purple
+            Gizmos.DrawLine(transform.position, nearestStealthExecutableEnemy.transform.position);
         }
     }
 
@@ -478,4 +613,5 @@ public class ExecutionSystem : MonoBehaviour
     public float GetExecutionEnergy() => currentExecutionEnergy;
     public float GetExecutionEnergyPercent() => currentExecutionEnergy / maxExecutionEnergy;
     public bool CanExecute() => currentExecutionEnergy >= requiredEnergy && Time.time - lastExecutionTime >= executionCooldown;
+    public bool IsExecuting() => isExecuting;
 }

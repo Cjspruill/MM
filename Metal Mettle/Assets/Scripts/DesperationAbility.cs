@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using System.Collections;
 
 public class DesperationAbility : MonoBehaviour
 {
@@ -8,7 +9,7 @@ public class DesperationAbility : MonoBehaviour
     private InputSystem_Actions inputActions;
 
     [Header("Desperation Settings")]
-    [Tooltip("How long must Absorb be held before Execute can trigger Desperation")]
+    [Tooltip("How long must Absorb be held before Execution can trigger Desperation")]
     public float holdDuration = 1.0f;
 
     [Tooltip("Visual feedback during hold")]
@@ -35,11 +36,17 @@ public class DesperationAbility : MonoBehaviour
     [Header("References")]
     public BloodSystem bloodSystem;
     public Animator playerAnimator;
-    public CameraShake cameraShake; // Reference to your existing camera shake
+    public CameraShake cameraShake;
 
     [Header("Camera Shake Settings")]
     public float shakeIntensity = 0.3f;
     public float shakeDuration = 0.5f;
+
+    public enum PlayMethod { DirectPlay, CrossFade, Trigger }
+
+    [Header("Animation Settings")]
+    public string desperationAnimationState = "Desperation";
+    public float desperationBlendTime = 0.1f;
 
     [Header("Debug")]
     public bool showDebugLogs = false;
@@ -90,15 +97,15 @@ public class DesperationAbility : MonoBehaviour
         inputActions.Player.Absorb.started += OnAbsorbStarted;
         inputActions.Player.Absorb.canceled += OnAbsorbCanceled;
 
-        // Execute button pressed
-        inputActions.Player.Execution.performed += OnExecutePressed;
+        // Execution button pressed
+        inputActions.Player.Execution.performed += OnExecutionPressed;
     }
 
     void OnDisable()
     {
         inputActions.Player.Absorb.started -= OnAbsorbStarted;
         inputActions.Player.Absorb.canceled -= OnAbsorbCanceled;
-        inputActions.Player.Execution.performed -= OnExecutePressed;
+        inputActions.Player.Execution.performed -= OnExecutionPressed;
 
         inputActions.Disable();
     }
@@ -230,7 +237,7 @@ public class DesperationAbility : MonoBehaviour
         }
     }
 
-    void OnExecutePressed(InputAction.CallbackContext context)
+    void OnExecutionPressed(InputAction.CallbackContext context)
     {
         if (bloodSystem.IsDead()) return;
 
@@ -238,7 +245,7 @@ public class DesperationAbility : MonoBehaviour
         if (!isCharging || !canExecute)
         {
             if (showDebugLogs && isHoldingAbsorb)
-                Debug.Log($"❌ Execute pressed too early ({holdTimer:F2}s / {holdDuration}s)");
+                Debug.Log($"❌ Execution pressed too early ({holdTimer:F2}s / {holdDuration}s)");
             return;
         }
 
@@ -251,7 +258,7 @@ public class DesperationAbility : MonoBehaviour
         canExecute = true;
 
         if (showDebugLogs)
-            Debug.Log("⚡ Desperation CHARGED - press Execute to self-harm!");
+            Debug.Log("⚡ Desperation CHARGED - press Execution to self-harm!");
 
         // Visual feedback
         if (desperationVFX != null)
@@ -290,6 +297,12 @@ public class DesperationAbility : MonoBehaviour
         if (showDebugLogs)
             Debug.Log($"💉 DESPERATION EXECUTED - Self-harm for {bloodSystem.desperationGain} blood!");
 
+        // Turn off charging state
+        if (playerAnimator != null)
+        {
+            playerAnimator.SetBool("IsChargingDesperation", false);
+        }
+
         // Trigger the ability in BloodSystem
         bloodSystem.UseDesperation();
 
@@ -297,7 +310,6 @@ public class DesperationAbility : MonoBehaviour
         flashTimer = 0f;
         if (bloodSystem.bloodFillImage != null)
         {
-            // Reset to normal color immediately
             Color baseColor = Color.Lerp(
                 bloodSystem.lowBloodColor,
                 bloodSystem.highBloodColor,
@@ -310,11 +322,20 @@ public class DesperationAbility : MonoBehaviour
         if (executeSound != null && audioSource != null)
             audioSource.PlayOneShot(executeSound);
 
-        // Animation
-        if (playerAnimator != null)
+        // Reset combo BEFORE playing animation
+        ComboController comboController = GetComponent<ComboController>();
+        if (comboController != null)
         {
-            playerAnimator.SetTrigger("Desperation");
-            playerAnimator.SetBool("IsChargingDesperation", false);
+            comboController.ForceResetCombo();
+        }
+
+        // Animation - DIRECT PLAY like combo system
+        if (playerAnimator != null && !string.IsNullOrEmpty(desperationAnimationState))
+        {
+            playerAnimator.Play(desperationAnimationState, 0, 0f);
+
+            if (showDebugLogs)
+                Debug.Log($"🎬 Playing animation: {desperationAnimationState}");
         }
 
         // Camera shake
@@ -323,10 +344,21 @@ public class DesperationAbility : MonoBehaviour
             cameraShake.Shake(shakeDuration, shakeIntensity);
         }
 
-        // Reset state
-        StopCharging();
+        // Reset input state
         isHoldingAbsorb = false;
         holdTimer = 0f;
+        isCharging = false;
+        canExecute = false;
+
+        // Turn off VFX
+        if (desperationVFX != null)
+            desperationVFX.SetActive(false);
+
+        // Reset material colors
+        if (showVisualFeedback && playerMaterials != null)
+        {
+            ResetPlayerColors();
+        }
     }
 
     void UpdateChargingVisuals()

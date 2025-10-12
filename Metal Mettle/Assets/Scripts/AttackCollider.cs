@@ -110,42 +110,16 @@ public class AttackCollider : MonoBehaviour
         var health = other.GetComponent<Health>();
         if (health != null)
         {
-            // PASS isHeavy to TakeDamage so it knows how many orbs to drop!
             health.TakeDamage(damage, isHeavy);
             Debug.Log($"✓ Hit {other.name} for {damage} damage ({(isHeavy ? "HEAVY" : "LIGHT")} attack)");
 
-            // ADD EXECUTION ENERGY ON SUCCESSFUL HIT
             ExecutionSystem executionSystem = GetComponentInParent<ExecutionSystem>();
             if (executionSystem != null)
             {
                 executionSystem.AddExecutionEnergy();
             }
 
-            // CAMERA SHAKE - only if we actually dealt damage
-            if (useCameraShake && CameraShake.Instance != null)
-            {
-                if (isHeavy)
-                {
-                    CameraShake.Instance.ShakeHeavy();
-                }
-                else
-                {
-                    CameraShake.Instance.ShakeLight();
-                }
-            }
-
-            // HIT STOP - only if we actually dealt damage
-            if (useHitStop && HitStop.Instance != null)
-            {
-                if (isHeavy)
-                {
-                    HitStop.Instance.StopHeavy();
-                }
-                else
-                {
-                    HitStop.Instance.StopLight();
-                }
-            }
+            ApplyFeedback(isHeavy);
         }
         else
         {
@@ -156,42 +130,31 @@ public class AttackCollider : MonoBehaviour
                 destructible.TakeDamage(damage, isHeavy);
                 Debug.Log($"✓ Hit DESTRUCTIBLE {other.name} for {damage} damage ({(isHeavy ? "HEAVY" : "LIGHT")} attack)");
 
-                // ADD EXECUTION ENERGY FOR DESTRUCTIBLE HITS TOO
                 ExecutionSystem executionSystem = GetComponentInParent<ExecutionSystem>();
                 if (executionSystem != null)
                 {
                     executionSystem.AddExecutionEnergy();
                 }
 
-                // CAMERA SHAKE
-                if (useCameraShake && CameraShake.Instance != null)
-                {
-                    if (isHeavy)
-                    {
-                        CameraShake.Instance.ShakeHeavy();
-                    }
-                    else
-                    {
-                        CameraShake.Instance.ShakeLight();
-                    }
-                }
-
-                // HIT STOP
-                if (useHitStop && HitStop.Instance != null)
-                {
-                    if (isHeavy)
-                    {
-                        HitStop.Instance.StopHeavy();
-                    }
-                    else
-                    {
-                        HitStop.Instance.StopLight();
-                    }
-                }
+                ApplyFeedback(isHeavy);
             }
             else
             {
-                Debug.LogWarning($"✗ {other.name} has no Health or DestructibleObject component!");
+                // NEW: Check for BreakableGlass
+                var glass = other.GetComponent<BreakableGlass>();
+                if (glass != null)
+                {
+                    Vector3 hitPoint = other.ClosestPoint(transform.position);
+                    glass.TakeDamage(1, hitPoint, attackDirection);
+                    Debug.Log($"✓ Hit GLASS {other.name} ({(isHeavy ? "HEAVY" : "LIGHT")} attack)");
+
+                    // Glass breaking gives feedback too
+                    ApplyFeedback(isHeavy);
+                }
+                else
+                {
+                    Debug.LogWarning($"✗ {other.name} has no Health, DestructibleObject, or BreakableGlass component!");
+                }
             }
         }
 
@@ -202,7 +165,6 @@ public class AttackCollider : MonoBehaviour
         {
             Debug.Log($"Skipped force on {other.name} - has NavMeshAgent");
 
-            // Also ensure rigidbody is kinematic if present
             var rb = other.GetComponent<Rigidbody>();
             if (rb != null && !rb.isKinematic)
             {
@@ -219,9 +181,35 @@ public class AttackCollider : MonoBehaviour
             rigidBody.AddForce(attackDirection * force, forceMode);
             Debug.Log($"✓ Applied {force} force to {other.name}");
         }
-        else
+    }
+
+    // Helper method to reduce duplication
+    private void ApplyFeedback(bool isHeavy)
+    {
+        // CAMERA SHAKE
+        if (useCameraShake && CameraShake.Instance != null)
         {
-            Debug.LogWarning($"✗ {other.name} has no Rigidbody!");
+            if (isHeavy)
+            {
+                CameraShake.Instance.ShakeHeavy();
+            }
+            else
+            {
+                CameraShake.Instance.ShakeLight();
+            }
+        }
+
+        // HIT STOP
+        if (useHitStop && HitStop.Instance != null)
+        {
+            if (isHeavy)
+            {
+                HitStop.Instance.StopHeavy();
+            }
+            else
+            {
+                HitStop.Instance.StopLight();
+            }
         }
     }
 

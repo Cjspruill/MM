@@ -18,6 +18,10 @@ public class MainMenuController : MonoBehaviour
     [SerializeField] private bool randomOrder = true;
     [SerializeField] private bool startOnEnable = true;
 
+    [Header("How To Play Pages")]
+    [SerializeField] private GameObject[] howToPlayPages;
+    private int currentPageIndex = 0;
+
     private List<int> availableIndices = new List<int>();
     private int currentIndex = -1;
     private Coroutine movementCoroutine;
@@ -194,5 +198,70 @@ public class MainMenuController : MonoBehaviour
         menuCamera.transform.position = targetTransform.position;
         menuCamera.transform.rotation = targetTransform.rotation;
         currentIndex = index;
+    }
+
+    // How To Play page management
+    public void NextPage()
+    {
+        if (howToPlayPages == null || howToPlayPages.Length == 0) return;
+
+        // Deactivate current page
+        if (currentPageIndex >= 0 && currentPageIndex < howToPlayPages.Length)
+        {
+            howToPlayPages[currentPageIndex].SetActive(false);
+        }
+
+        // Move to next page (loop at end)
+        currentPageIndex = (currentPageIndex + 1) % howToPlayPages.Length;
+
+        // Activate new page
+        howToPlayPages[currentPageIndex].SetActive(true);
+    }
+
+    public void PreviousPage()
+    {
+        if (howToPlayPages == null || howToPlayPages.Length == 0) return;
+
+        // Deactivate current page
+        if (currentPageIndex >= 0 && currentPageIndex < howToPlayPages.Length)
+        {
+            howToPlayPages[currentPageIndex].SetActive(false);
+        }
+
+        // Move to previous page (loop at beginning)
+        currentPageIndex--;
+        if (currentPageIndex < 0)
+        {
+            currentPageIndex = howToPlayPages.Length - 1;
+        }
+
+        // Activate new page
+        howToPlayPages[currentPageIndex].SetActive(true);
+    }
+
+    public void SetPage(int index)
+    {
+        if (howToPlayPages == null || howToPlayPages.Length == 0) return;
+        if (index < 0 || index >= howToPlayPages.Length) return;
+
+        // Deactivate current page
+        if (currentPageIndex >= 0 && currentPageIndex < howToPlayPages.Length)
+        {
+            howToPlayPages[currentPageIndex].SetActive(false);
+        }
+
+        // Set and activate new page
+        currentPageIndex = index;
+        howToPlayPages[currentPageIndex].SetActive(true);
+    }
+
+    // Quit application
+    public void QuitGame()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 }
