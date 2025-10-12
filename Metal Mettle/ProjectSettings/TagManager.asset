@@ -17,8 +17,8 @@ TagManager:
   - Environment
   - Player
   - Collectible
-  - 
-  - 
+  - SpawnArea
+  - BlockSpawn
   - 
   - 
   - 

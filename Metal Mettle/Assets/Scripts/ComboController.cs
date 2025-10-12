@@ -1,15 +1,28 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections.Generic;
 
 public class ComboController : MonoBehaviour
 {
     [Header("References")]
-    public BoxCollider attackHitbox;
+    public BoxCollider attackHitbox; // DEPRECATED - kept for compatibility
     public MeshRenderer debugRenderer;
     public BloodSystem bloodSystem;
     public Animator animator;
     private InputSystem_Actions controls;
     private AttackCollider attackCollider;
+
+    [Header("Limb Hitboxes")]
+    public BoxCollider leftArmHitbox;
+    public BoxCollider rightArmHitbox;
+    public BoxCollider leftLegHitbox;
+    public BoxCollider rightLegHitbox;
+
+    [Header("Limb Debug Renderers (Optional)")]
+    public MeshRenderer leftArmDebug;
+    public MeshRenderer rightArmDebug;
+    public MeshRenderer leftLegDebug;
+    public MeshRenderer rightLegDebug;
 
     [Header("Combo Settings")]
     public int maxLightCombo = 3;
@@ -17,12 +30,14 @@ public class ComboController : MonoBehaviour
     public float heavyHoldTime = 0.3f;
     public bool allowMixedCombos = false;
 
-    [Header("Timing")]
+    [Header("Timing - DMC Style")]
     public float attackDuration = 0.3f;
-    public float attackCooldown = 0.5f;
+    public float attackCooldown = 0.1f; // Reduced for faster combos
     public float comboWindow = 10f;
-    public float comboEndCooldown = 0.5f;
-    public float inputBufferTime = 0.2f;
+    public float comboEndCooldown = 0.1f; // Reduced
+    public float inputBufferTime = 0.3f; // Increased for responsiveness
+    public float cancelWindow = 0.5f; // INCREASED: Was 0.15f - now waits longer before allowing cancel
+    public float minAnimationPlayTime = 0.4f; // NEW: Minimum time animation must play
 
     [Header("Block")]
     public bool blockEnabled = true;
@@ -54,10 +69,6 @@ public class ComboController : MonoBehaviour
     private bool buttonPressed = false;
     private float buttonHoldTime = 0f;
     private bool heavyAttackTriggered = false;
-    private bool hasBufferedInput = false;
-    private bool bufferedIsHeavy = false;
-    private float bufferedInputTime = 0f;
-    private int bufferedExpectedComboStep = 0;
 
     private bool currentAttackIsHeavy = false;
     private int currentAttackStep = 0;
@@ -66,6 +77,12 @@ public class ComboController : MonoBehaviour
     private bool successfulBlockFlag = false;
     private bool wasCancelled = false;
     private bool useAnimationEvents = true;
+
+    // DMC-style flow variables
+    private float attackStartTime = 0f;
+    private bool inCancelWindow = false;
+    private Queue<(bool isHeavy, float timestamp)> inputQueue = new Queue<(bool, float)>();
+    private const int maxQueueSize = 3;
 
     private string lastLightAttack = "";
     private string lastHeavyAttack = "";
@@ -76,10 +93,22 @@ public class ComboController : MonoBehaviour
         controls = InputManager.Instance.Controls;
         controls.Enable();
 
+        // Disable all hitboxes at start
         if (attackHitbox) attackHitbox.enabled = false;
+        if (leftArmHitbox) leftArmHitbox.enabled = false;
+        if (rightArmHitbox) rightArmHitbox.enabled = false;
+        if (leftLegHitbox) leftLegHitbox.enabled = false;
+        if (rightLegHitbox) rightLegHitbox.enabled = false;
+
         if (debugRenderer) debugRenderer.enabled = false;
+        if (leftArmDebug) leftArmDebug.enabled = false;
+        if (rightArmDebug) rightArmDebug.enabled = false;
+        if (leftLegDebug) leftLegDebug.enabled = false;
+        if (rightLegDebug) rightLegDebug.enabled = false;
+
         if (blockVisual) blockVisual.SetActive(false);
 
+        // Legacy support
         if (attackHitbox != null)
         {
             attackCollider = attackHitbox.GetComponent<AttackCollider>();
@@ -91,7 +120,7 @@ public class ComboController : MonoBehaviour
         }
         else
         {
-            DebugLog("ComboController initialized - ORIGINAL SYSTEM");
+            DebugLog("ComboController initialized - DMC STYLE");
         }
     }
 
@@ -102,15 +131,15 @@ public class ComboController : MonoBehaviour
         if (isAbsorbing)
         {
             DebugLog("🚫 Absorbing - blocking combat input");
-            return; // Exit early, don't process any combat
+            return;
         }
 
-        // CRITICAL: Check if Desperation is active - if so, block ALL combat input
+        // CRITICAL: Check if Desperation is active
         bool isDesperation = animator != null && animator.GetCurrentAnimatorStateInfo(0).IsName("Desperation");
         if (isDesperation)
         {
             DebugLog("🚫 Desperation active - blocking combat input");
-            return; // Exit early
+            return;
         }
 
         bool attackHeld = controls.Player.Attack.IsPressed();
@@ -134,47 +163,27 @@ public class ComboController : MonoBehaviour
 
         if (isBlocking) return;
 
-        bool isLockedOut = Time.time < nextAttackAllowedTime;
-
-        // Process buffered input
-        if (hasBufferedInput && canAttack && !inRecovery && !isLockedOut && !isProcessingAttack)
+        // DMC-Style: Update cancel window
+        if (isAttacking)
         {
-            float timeSinceBuffer = Time.time - bufferedInputTime;
-            if (timeSinceBuffer <= inputBufferTime)
-            {
-                if (bufferedExpectedComboStep == comboStep)
-                {
-                    DebugLog($"⚡ PROCESSING BUFFERED INPUT!");
-                    hasBufferedInput = false;
-                    TriggerAttack(bufferedIsHeavy);
-                }
-                else
-                {
-                    DebugLog($"🗑️ Discarding stale buffer (expected step {bufferedExpectedComboStep}, now {comboStep})");
-                    hasBufferedInput = false;
-                }
-                return;
-            }
-            else
-            {
-                DebugLog($"⏱️ Buffer expired ({timeSinceBuffer:F2}s > {inputBufferTime})");
-                hasBufferedInput = false;
-            }
+            float timeSinceAttackStart = Time.time - attackStartTime;
+            inCancelWindow = timeSinceAttackStart >= cancelWindow;
+        }
+        else
+        {
+            inCancelWindow = false;
         }
 
-        // Button press detection
+        // Process input queue for ultra-responsive combos
+        ProcessInputQueue();
+
+        // Button press detection - INSTANT queue
         if (controls.Player.Attack.WasPressedThisFrame())
         {
-            if (hasBufferedInput)
-            {
-                DebugLog("🗑️ Clearing old buffer on new press");
-                hasBufferedInput = false;
-            }
-
             buttonPressed = true;
             buttonHoldTime = 0f;
             heavyAttackTriggered = false;
-            DebugLog($">>> BUTTON PRESSED <<< Step:{comboStep}, CanAttack:{canAttack}, Recovery:{inRecovery}, LockedOut:{isLockedOut}");
+            DebugLog($">>> BUTTON PRESSED <<<");
         }
 
         // Check for heavy attack trigger during hold
@@ -184,137 +193,133 @@ public class ComboController : MonoBehaviour
 
             if (buttonHoldTime >= heavyHoldTime && !heavyAttackTriggered)
             {
-                DebugLog($"🔨 Heavy attack triggered (held {buttonHoldTime:F2}s)");
+                DebugLog($"🔨 Heavy queued");
                 heavyAttackTriggered = true;
+                QueueAttack(true);
                 buttonPressed = false;
                 buttonHoldTime = 0f;
-
-                if ((canAttack && !isLockedOut && !isProcessingAttack) || (comboStep > 0 && !inRecovery && !isProcessingAttack))
-                {
-                    TriggerAttack(true);
-                }
-                else
-                {
-                    DebugLog($"📦 Buffering heavy (CanAttack:{canAttack}, LockedOut:{isLockedOut}, Step:{comboStep}, Recovery:{inRecovery})");
-                    hasBufferedInput = true;
-                    bufferedIsHeavy = true;
-                    bufferedInputTime = Time.time;
-                    bufferedExpectedComboStep = comboStep;
-                }
             }
         }
 
         // Button release - trigger light attack
         if (controls.Player.Attack.WasReleasedThisFrame())
         {
-            DebugLog($">>> RELEASED <<< HeavyTriggered:{heavyAttackTriggered}, HoldTime:{buttonHoldTime:F2}s");
-
-            if (heavyAttackTriggered)
+            if (!heavyAttackTriggered && buttonPressed)
             {
-                heavyAttackTriggered = false;
-                buttonPressed = false;
-                buttonHoldTime = 0f;
-                return;
+                DebugLog($"👊 Light queued");
+                QueueAttack(false);
             }
 
-            if (buttonPressed)
-            {
-                buttonPressed = false;
-
-                if (buttonHoldTime < heavyHoldTime)
-                {
-                    if ((canAttack && !isLockedOut && !isProcessingAttack) || (comboStep > 0 && !inRecovery && !isProcessingAttack))
-                    {
-                        TriggerAttack(false);
-                    }
-                    else
-                    {
-                        DebugLog($"📦 Buffering light (CanAttack:{canAttack}, LockedOut:{isLockedOut}, Step:{comboStep}, Recovery:{inRecovery})");
-                        hasBufferedInput = true;
-                        bufferedIsHeavy = false;
-                        bufferedInputTime = Time.time;
-                        bufferedExpectedComboStep = comboStep;
-                    }
-                }
-            }
+            heavyAttackTriggered = false;
+            buttonPressed = false;
+            buttonHoldTime = 0f;
         }
 
-        bool safeToTimeout = !isAttacking && !hasBufferedInput && !isProcessingAttack && !waitingForAnimationComplete;
-
+        // Combo timeout (extended window)
+        bool safeToTimeout = !isAttacking && inputQueue.Count == 0 && !isProcessingAttack;
         if (Time.time - lastAttackTime > comboWindow && comboStep > 0 && safeToTimeout)
         {
-            DebugLog($"⏱️ Combo window expired ({Time.time - lastAttackTime:F2}s > {comboWindow})");
+            DebugLog($"⏱️ Combo timeout");
             ResetCombo();
         }
 
-        // Safety check
+        // Safety unstuck
         if (animator != null && animator.GetBool("IsAttacking") && !isAttacking && !isProcessingAttack && Time.time - lastAttackTime > 0.5f)
         {
-            DebugLog($"🚨 STUCK DETECTION - Forcing locomotion!");
+            DebugLog($"🚨 Unstuck!");
             animator.SetBool("IsAttacking", false);
             animator.CrossFade("Locomotion", 0.1f, 0);
             ResetCombo();
         }
     }
 
-    void TriggerAttack(bool isHeavy)
+    // NEW: Queue system for instant responsiveness
+    void QueueAttack(bool isHeavy)
     {
-        if (isProcessingAttack)
+        if (inputQueue.Count >= maxQueueSize)
         {
-            DebugLog($"⚠️ Already processing an attack, ignoring trigger");
-            return;
+            DebugLog($"⚠️ Queue full, dropping oldest input");
+            inputQueue.Dequeue();
         }
 
-        isProcessingAttack = true;
+        inputQueue.Enqueue((isHeavy, Time.time));
+        DebugLog($"📥 Queued {(isHeavy ? "HEAVY" : "LIGHT")} (Queue: {inputQueue.Count})");
+    }
 
-        DebugLog($"=== TriggerAttack === Heavy:{isHeavy}, Step:{comboStep}, IsHeavyCombo:{isHeavyCombo}");
+    void ProcessInputQueue()
+    {
+        if (inputQueue.Count == 0) return;
+        if (isProcessingAttack) return;
 
-        if (Time.time < nextAttackAllowedTime)
+        // Can we process the next input?
+        bool canProcess = false;
+
+        if (comboStep == 0)
         {
-            DebugLog($"❌ Attack locked out for {(nextAttackAllowedTime - Time.time):F2}s more");
-            isProcessingAttack = false;
-            return;
+            // Starting combo - check global cooldown only
+            canProcess = canAttack && Time.time >= nextAttackAllowedTime;
+        }
+        else if (isAttacking)
+        {
+            // Mid-combo - check BOTH cancel window AND minimum play time
+            float timeSinceAttackStart = Time.time - attackStartTime;
+            bool passedMinTime = timeSinceAttackStart >= minAnimationPlayTime;
+            canProcess = inCancelWindow && passedMinTime;
+        }
+        else
+        {
+            // Between attacks - very permissive
+            canProcess = !inRecovery;
         }
 
-        if (!canAttack && comboStep == 0)
-        {
-            DebugLog("❌ Cannot attack - not ready for first attack");
-            isProcessingAttack = false;
-            return;
-        }
+        if (!canProcess) return;
 
-        if (comboStep == 0 && inRecovery)
+        var (nextIsHeavy, timestamp) = inputQueue.Peek();
+
+        // Check if input is stale
+        if (Time.time - timestamp > inputBufferTime)
         {
-            DebugLog("❌ Cannot attack - in recovery");
-            isProcessingAttack = false;
+            DebugLog($"⏱️ Discarding stale input");
+            inputQueue.Dequeue();
             return;
         }
 
         // Check blood cost
         if (bloodSystem != null)
         {
-            float bloodCost = isHeavy ? 3f : 2f;
+            float bloodCost = nextIsHeavy ? 3f : 2f;
             if (bloodSystem.currentBlood < bloodCost)
             {
-                DebugLog($"❌ Not enough blood! Need {bloodCost}, have {bloodSystem.currentBlood}");
-                isProcessingAttack = false;
+                DebugLog($"❌ Not enough blood for queued attack");
+                inputQueue.Clear(); // Clear queue on blood fail
                 return;
             }
         }
 
-        bool isCancelling = isAttacking && comboStep > 0;
-        if (isCancelling)
+        // Process the attack!
+        inputQueue.Dequeue();
+        TriggerAttack(nextIsHeavy);
+    }
+
+    void TriggerAttack(bool isHeavy)
+    {
+        if (isProcessingAttack)
         {
-            wasCancelled = true;
-            DebugLog($"⚡ CANCELLING attack {comboStep} into next attack!");
+            DebugLog($"⚠️ Already processing");
+            return;
         }
 
+        isProcessingAttack = true;
+        attackStartTime = Time.time;
+
+        DebugLog($"⚔️ ATTACK! Heavy:{isHeavy}, Step:{comboStep}");
+
+        // DMC-style: Determine combo type on first hit only
         bool wasHeavyCombo = isHeavyCombo;
 
         if (comboStep == 0)
         {
             isHeavyCombo = isHeavy;
-            wasCancelled = false;
             DebugLog($"🆕 Starting {(isHeavy ? "HEAVY" : "LIGHT")} combo");
         }
         else
@@ -325,60 +330,49 @@ public class ComboController : MonoBehaviour
             {
                 if (!allowMixedCombos)
                 {
-                    DebugLog("❌ Cannot mix attack types");
+                    DebugLog("❌ Cannot mix");
                     isProcessingAttack = false;
                     return;
                 }
                 else if (isHeavy && !isHeavyCombo)
                 {
-                    DebugLog($"💥 Heavy finisher! Switching from light to heavy");
+                    DebugLog($"💥 Heavy finisher!");
                 }
-                else if (!isHeavy && isHeavyCombo)
+                else
                 {
-                    DebugLog("❌ Cannot go heavy to light");
+                    DebugLog("❌ No heavy->light");
                     isProcessingAttack = false;
                     return;
                 }
             }
         }
 
-        int previousComboStep = comboStep;
+        int previousStep = comboStep;
         comboStep++;
 
-        int maxCombo;
-        bool justSwitchedToHeavy = isHeavy && !wasHeavyCombo && allowMixedCombos && previousComboStep > 0;
+        int maxCombo = (isHeavy && !wasHeavyCombo && allowMixedCombos && previousStep > 0)
+            ? maxLightCombo
+            : (wasHeavyCombo ? maxHeavyCombo : maxLightCombo);
 
-        if (justSwitchedToHeavy)
+        if (isHeavy && !wasHeavyCombo && allowMixedCombos && previousStep > 0)
         {
-            maxCombo = maxLightCombo;
             isHeavyCombo = true;
-        }
-        else if (wasHeavyCombo)
-        {
-            maxCombo = maxHeavyCombo;
-        }
-        else
-        {
-            maxCombo = maxLightCombo;
         }
 
         if (comboStep > maxCombo)
         {
-            DebugLog($"🎯 Combo exceeded max ({comboStep} > {maxCombo})! Ending combo.");
+            DebugLog($"🎯 Combo maxed! Ending.");
             comboStep = maxCombo;
             isProcessingAttack = false;
             EndCombo();
             return;
         }
 
-        DebugLog($"⚔️ Attack {comboStep}/{maxCombo} - IsHeavyCombo:{isHeavyCombo}");
-
+        // Execute attack with blood-based speed modifier
         float speedModifier = bloodSystem != null ? bloodSystem.GetAttackSpeedModifier() : 1f;
-        float adjustedCooldown = attackCooldown / speedModifier;
 
         isAttacking = true;
         waitingForAnimationComplete = true;
-        canAttack = false;
         lastAttackTime = Time.time;
 
         currentAttackIsHeavy = isHeavyCombo;
@@ -391,35 +385,38 @@ public class ComboController : MonoBehaviour
         {
             animator.SetBool("IsAttacking", true);
 
-            // Simple crossfade - let it blend naturally
-            float blendTime = 0.1f;
+            // DMC-style: Very fast transitions for flow
+            float blendTime = comboStep > 1 ? 0.05f : 0.1f;
             animator.CrossFade(stateName, blendTime, 0, 0f);
 
+            // CRITICAL: Apply speed modifier to both animator parameter AND animator.speed
             animator.SetFloat("AttackSpeed", speedModifier);
             animator.speed = speedModifier;
+
+            DebugLog($"🎬 Animation speed: {speedModifier:F2}x (Blood: {(bloodSystem != null ? bloodSystem.currentBlood : 100):F0}%)");
         }
 
         if (!useAnimationEvents)
         {
             ActivateHitbox();
-            Invoke(nameof(DeactivateHitbox), attackDuration);
+            Invoke(nameof(DeactivateHitbox), attackDuration / speedModifier); // Account for speed
         }
         else
         {
-            Invoke(nameof(ForceDeactivateHitbox), 2f);
+            Invoke(nameof(ForceDeactivateHitbox), 2f / speedModifier); // Account for speed
         }
 
-        float comboInputWindow = Mathf.Max(0.2f, adjustedCooldown * 0.4f);
+        // DMC-style: Minimal recovery, fast combo window (adjusted for speed)
+        float comboInputWindow = 0.1f / speedModifier; // Faster at high blood
         Invoke(nameof(EnableNextAttack), comboInputWindow);
 
+        // Recovery based on animation length - let it play! (adjusted for speed)
         inRecovery = true;
-
         AnimationClip clip = GetAnimationClip(stateName);
-        float recoveryTime = clip != null ? clip.length / speedModifier : 0.3f;
-        float totalRecovery = adjustedCooldown + recoveryTime;
+        float recoveryTime = clip != null ? (clip.length / speedModifier) * 0.7f : (0.5f / speedModifier); // 70% of anim
 
-        Invoke(nameof(EndRecovery), totalRecovery);
-        Invoke(nameof(ClearProcessingFlag), 0.1f);
+        Invoke(nameof(EndRecovery), recoveryTime);
+        Invoke(nameof(ClearProcessingFlag), 0.05f);
     }
 
     string GetAttackStateName(bool isHeavy, int step)
@@ -516,35 +513,74 @@ public class ComboController : MonoBehaviour
         isProcessingAttack = false;
     }
 
-    public void ActivateHitbox()
+    public void ActivateHitbox(string limbName = "")
     {
-        DebugLog($"🗡️ HITBOX ON - Step:{currentAttackStep}, IsHeavy:{currentAttackIsHeavy}");
+        DebugLog($"🗡️ HITBOX ON [{limbName}] - Step:{currentAttackStep}, IsHeavy:{currentAttackIsHeavy}");
 
         if (bloodSystem != null)
         {
             bloodSystem.OnAttack(currentAttackIsHeavy);
         }
 
-        if (attackCollider != null)
+        // Get the specific limb hitbox
+        BoxCollider hitbox = GetHitboxByName(limbName);
+        MeshRenderer debugMesh = GetDebugRendererByName(limbName);
+
+        if (hitbox != null)
         {
-            attackCollider.ClearHitList();
+            // Clear hit list on the specific limb's AttackCollider
+            AttackCollider limbCollider = hitbox.GetComponent<AttackCollider>();
+            if (limbCollider != null)
+            {
+                limbCollider.ClearHitList();
+            }
+
+            hitbox.enabled = true;
+
+            if (debugMesh && showDebugHitbox)
+            {
+                debugMesh.enabled = true;
+                Color[] colors = currentAttackIsHeavy ? heavyColors : lightColors;
+                int colorIndex = Mathf.Clamp(currentAttackStep - 1, 0, colors.Length - 1);
+                debugMesh.material.color = colors[colorIndex];
+            }
         }
-
-        if (attackHitbox) attackHitbox.enabled = true;
-
-        if (debugRenderer && showDebugHitbox)
+        else
         {
-            debugRenderer.enabled = true;
-            Color[] colors = currentAttackIsHeavy ? heavyColors : lightColors;
-            int colorIndex = Mathf.Clamp(currentAttackStep - 1, 0, colors.Length - 1);
-            debugRenderer.material.color = colors[colorIndex];
+            Debug.LogWarning($"⚠️ No hitbox found for limb: {limbName}");
+
+            // Fallback to legacy system
+            if (attackCollider != null)
+            {
+                attackCollider.ClearHitList();
+            }
+            if (attackHitbox) attackHitbox.enabled = true;
+            if (debugRenderer && showDebugHitbox)
+            {
+                debugRenderer.enabled = true;
+                Color[] colors = currentAttackIsHeavy ? heavyColors : lightColors;
+                int colorIndex = Mathf.Clamp(currentAttackStep - 1, 0, colors.Length - 1);
+                debugRenderer.material.color = colors[colorIndex];
+            }
         }
     }
 
-    public void DeactivateHitbox()
+    public void DeactivateHitbox(string limbName = "")
     {
-        if (attackHitbox) attackHitbox.enabled = false;
-        if (debugRenderer) debugRenderer.enabled = false;
+        BoxCollider hitbox = GetHitboxByName(limbName);
+        MeshRenderer debugMesh = GetDebugRendererByName(limbName);
+
+        if (hitbox != null)
+        {
+            hitbox.enabled = false;
+            if (debugMesh) debugMesh.enabled = false;
+        }
+        else
+        {
+            // Fallback to legacy system
+            if (attackHitbox) attackHitbox.enabled = false;
+            if (debugRenderer) debugRenderer.enabled = false;
+        }
 
         if (!isProcessingAttack)
         {
@@ -555,10 +591,93 @@ public class ComboController : MonoBehaviour
         CancelInvoke(nameof(ForceDeactivateHitbox));
     }
 
+    // Helper method to get hitbox by name
+    BoxCollider GetHitboxByName(string limbName)
+    {
+        switch (limbName.ToLower())
+        {
+            case "leftarm":
+            case "left arm":
+            case "larm":
+                return leftArmHitbox;
+
+            case "rightarm":
+            case "right arm":
+            case "rarm":
+                return rightArmHitbox;
+
+            case "leftleg":
+            case "left leg":
+            case "lleg":
+                return leftLegHitbox;
+
+            case "rightleg":
+            case "right leg":
+            case "rleg":
+                return rightLegHitbox;
+
+            default:
+                return null;
+        }
+    }
+
+    // Helper method to get debug renderer by name
+    MeshRenderer GetDebugRendererByName(string limbName)
+    {
+        switch (limbName.ToLower())
+        {
+            case "leftarm":
+            case "left arm":
+            case "larm":
+                return leftArmDebug;
+
+            case "rightarm":
+            case "right arm":
+            case "rarm":
+                return rightArmDebug;
+
+            case "leftleg":
+            case "left leg":
+            case "lleg":
+                return leftLegDebug;
+
+            case "rightleg":
+            case "right leg":
+            case "rleg":
+                return rightLegDebug;
+
+            default:
+                return debugRenderer; // Fallback to legacy
+        }
+    }
+
+    // Deactivate ALL hitboxes - useful for cleanup
+    public void DeactivateAllHitboxes()
+    {
+        if (leftArmHitbox) leftArmHitbox.enabled = false;
+        if (rightArmHitbox) rightArmHitbox.enabled = false;
+        if (leftLegHitbox) leftLegHitbox.enabled = false;
+        if (rightLegHitbox) rightLegHitbox.enabled = false;
+        if (attackHitbox) attackHitbox.enabled = false;
+
+        if (leftArmDebug) leftArmDebug.enabled = false;
+        if (rightArmDebug) rightArmDebug.enabled = false;
+        if (leftLegDebug) leftLegDebug.enabled = false;
+        if (rightLegDebug) rightLegDebug.enabled = false;
+        if (debugRenderer) debugRenderer.enabled = false;
+
+        if (!isProcessingAttack)
+        {
+            isAttacking = false;
+        }
+
+        waitingForAnimationComplete = false;
+    }
+
     void ForceDeactivateHitbox()
     {
-        Debug.LogWarning("⚠️ Force deactivating hitbox!");
-        DeactivateHitbox();
+        Debug.LogWarning("⚠️ Force deactivating ALL hitboxes!");
+        DeactivateAllHitboxes();
     }
 
     void EnableNextAttack()
@@ -585,7 +704,6 @@ public class ComboController : MonoBehaviour
 
         comboStep = 0;
         isHeavyCombo = false;
-        hasBufferedInput = false;
         heavyAttackTriggered = false;
         buttonPressed = false;
         isAttacking = false;
@@ -595,11 +713,13 @@ public class ComboController : MonoBehaviour
         isProcessingAttack = false;
         wasCancelled = false;
         nextAttackAllowedTime = 0f;
+        inCancelWindow = false;
+        inputQueue.Clear();
 
         if (animator != null)
         {
             animator.SetBool("IsAttacking", false);
-            animator.CrossFade("Locomotion", 0.15f, 0);
+            animator.CrossFade("Locomotion", 0.1f, 0);
             animator.speed = 1f;
         }
     }
@@ -608,18 +728,17 @@ public class ComboController : MonoBehaviour
     {
         if (isAttacking || isProcessingAttack)
         {
-            DebugLog($"⚠️ Delaying EndCombo - still attacking or processing!");
-            Invoke(nameof(EndCombo), 0.2f);
+            DebugLog($"⚠️ Delaying EndCombo");
+            Invoke(nameof(EndCombo), 0.1f);
             return;
         }
 
-        DebugLog($"🏁 Combo Ended");
+        DebugLog($"🏁 Combo End");
 
         comboStep = 0;
         isHeavyCombo = false;
         isAttacking = false;
         waitingForAnimationComplete = false;
-        hasBufferedInput = false;
         heavyAttackTriggered = false;
         buttonPressed = false;
         canAttack = false;
@@ -627,19 +746,22 @@ public class ComboController : MonoBehaviour
         currentAttackIsHeavy = false;
         isProcessingAttack = false;
         wasCancelled = false;
+        inCancelWindow = false;
+        inputQueue.Clear();
 
-        if (attackHitbox) attackHitbox.enabled = false;
-        if (debugRenderer) debugRenderer.enabled = false;
+        // Disable all hitboxes
+        DeactivateAllHitboxes();
 
         if (animator != null)
         {
             animator.SetBool("IsAttacking", false);
-            animator.CrossFade("Locomotion", 0.2f, 0);
+            animator.CrossFade("Locomotion", 0.15f, 0);
             animator.speed = 1f;
         }
 
+        // DMC-style: Very brief end cooldown
         nextAttackAllowedTime = Time.time + comboEndCooldown;
-        canAttack = true;
+        Invoke(nameof(EnableNextAttack), comboEndCooldown);
     }
 
     void StartBlocking()
@@ -721,17 +843,18 @@ public class ComboController : MonoBehaviour
     {
         if (!enableDebugLogs) return;
 
-        GUILayout.BeginArea(new Rect(10, 10, 400, 250));
+        GUILayout.BeginArea(new Rect(10, 10, 400, 300));
         GUILayout.Label($"Combo: {comboStep} ({(isHeavyCombo ? "HEAVY" : "LIGHT")})");
         GUILayout.Label($"Can Attack: {canAttack}");
         GUILayout.Label($"Attacking: {isAttacking}");
         GUILayout.Label($"Processing: {isProcessingAttack}");
         GUILayout.Label($"Recovery: {inRecovery}");
+        GUILayout.Label($"Cancel Window: {inCancelWindow}");
 
-        if (hasBufferedInput)
+        if (inputQueue.Count > 0)
         {
             GUI.color = Color.cyan;
-            GUILayout.Label($"BUFFERED: {(bufferedIsHeavy ? "H" : "L")} (Step {bufferedExpectedComboStep})");
+            GUILayout.Label($"QUEUE: {inputQueue.Count} inputs");
             GUI.color = Color.white;
         }
 

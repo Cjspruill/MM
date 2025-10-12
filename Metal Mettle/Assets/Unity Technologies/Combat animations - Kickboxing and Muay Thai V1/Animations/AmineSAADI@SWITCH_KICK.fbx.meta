@@ -68,14 +68,14 @@ ModelImporter:
       events:
       - time: 0.35271809
         functionName: ActivateHitbox
-        data: 
+        data: LeftLeg
         objectReferenceParameter: {instanceID: 0}
         floatParameter: 0
         intParameter: 0
         messageOptions: 0
       - time: 0.4766119
         functionName: DeactivateHitbox
-        data: 
+        data: LeftLeg
         objectReferenceParameter: {instanceID: 0}
         floatParameter: 0
         intParameter: 0
