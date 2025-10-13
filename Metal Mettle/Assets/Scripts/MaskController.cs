@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 using System.Collections.Generic;
 
 public class MaskController : MonoBehaviour
@@ -10,6 +11,10 @@ public class MaskController : MonoBehaviour
         public string pieceName;
         public GameObject pieceOnCharacter;
         public bool isCollected = false;
+
+        [Header("Voiceover")]
+        [Tooltip("Voiceover dialogue that plays when this piece is collected")]
+        public AudioClip voiceoverClip;
     }
 
     [Header("Mask Pieces on Character")]
@@ -27,16 +32,21 @@ public class MaskController : MonoBehaviour
     [SerializeField] private ObjectiveController objectiveController;
     [SerializeField] private string maskCollectionTaskPrefix = "Collect";
 
-    [Header("Audio (Optional)")]
+    [Header("Audio")]
     [SerializeField] private AudioClip collectionSound;
-    private AudioSource audioSource;
+    [Tooltip("Audio source for collection sound effects (short sounds)")]
+    [SerializeField] private AudioSource sfxAudioSource;
+
+    [Tooltip("Audio source for voiceover dialogue (can be separate for better control)")]
+    [SerializeField] private AudioSource voiceoverAudioSource;
+
+    [Tooltip("Delay before playing voiceover after collection sound")]
+    [SerializeField] private float voiceoverDelay = 0.5f;
 
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
 
     private MaskPieceCollectible nearbyCollectible;
-
-
 
     private void Awake()
     {
@@ -67,7 +77,43 @@ public class MaskController : MonoBehaviour
             }
         }
 
-        audioSource = GetComponent<AudioSource>();
+        // Setup audio sources - create them if they don't exist
+        AudioSource[] sources = GetComponents<AudioSource>();
+
+        if (sfxAudioSource == null)
+        {
+            if (sources.Length > 0)
+            {
+                sfxAudioSource = sources[0];
+            }
+            else
+            {
+                sfxAudioSource = gameObject.AddComponent<AudioSource>();
+                Debug.Log("Created SFX AudioSource");
+            }
+        }
+
+        // If no separate voiceover source specified, create or use second one
+        if (voiceoverAudioSource == null)
+        {
+            if (sources.Length > 1)
+            {
+                voiceoverAudioSource = sources[1];
+            }
+            else
+            {
+                voiceoverAudioSource = gameObject.AddComponent<AudioSource>();
+                Debug.Log("Created Voiceover AudioSource");
+            }
+        }
+
+        // Configure voiceover audio source for dialogue
+        if (voiceoverAudioSource != null)
+        {
+            voiceoverAudioSource.playOnAwake = false;
+            voiceoverAudioSource.spatialBlend = 0f; // 2D audio for voiceover
+            Debug.Log($"Voiceover AudioSource configured: {voiceoverAudioSource.gameObject.name}");
+        }
 
         // Auto-find objective controller if not set
         if (objectiveController == null)
@@ -78,6 +124,8 @@ public class MaskController : MonoBehaviour
         if (showDebugLogs)
         {
             Debug.Log($"MaskController started. {maskPieces.Count} pieces configured.");
+            Debug.Log($"SFX Source: {(sfxAudioSource != null ? "Found" : "Missing")}");
+            Debug.Log($"Voiceover Source: {(voiceoverAudioSource != null ? "Found" : "Missing")}");
         }
     }
 
@@ -145,10 +193,7 @@ public class MaskController : MonoBehaviour
 
     public void CollectPiece(string pieceType)
     {
-        if (showDebugLogs)
-        {
-            Debug.Log($"Attempting to collect: {pieceType}");
-        }
+        Debug.Log($"=== CollectPiece called for: {pieceType} ===");
 
         foreach (MaskPiece piece in maskPieces)
         {
@@ -161,9 +206,22 @@ public class MaskController : MonoBehaviour
                     piece.pieceOnCharacter.SetActive(true);
                     Debug.Log($"✓ Collected {pieceType}! Piece activated on character.");
 
-                    if (audioSource != null && collectionSound != null)
+                    // Play collection sound effect
+                    if (sfxAudioSource != null && collectionSound != null)
                     {
-                        audioSource.PlayOneShot(collectionSound);
+                        sfxAudioSource.PlayOneShot(collectionSound);
+                        Debug.Log("Played collection SFX");
+                    }
+
+                    // Check voiceover clip
+                    if (piece.voiceoverClip != null)
+                    {
+                        Debug.Log($"🎤 Voiceover clip found: {piece.voiceoverClip.name}, starting coroutine...");
+                        StartCoroutine(PlayVoiceoverDelayed(piece.voiceoverClip, voiceoverDelay));
+                    }
+                    else
+                    {
+                        Debug.LogError($"❌ NO VOICEOVER CLIP assigned for {pieceType}!");
                     }
 
                     // NOTIFY OBJECTIVE CONTROLLER
@@ -172,10 +230,6 @@ public class MaskController : MonoBehaviour
                         string taskName = maskCollectionTaskPrefix + " " + pieceType;
                         Debug.Log($"Completing objective task: {taskName}");
                         objectiveController.CompleteTask(taskName);
-                    }
-                    else
-                    {
-                        Debug.LogWarning("ObjectiveController is null! Can't complete task.");
                     }
 
                     CheckIfMaskComplete();
@@ -189,6 +243,35 @@ public class MaskController : MonoBehaviour
         }
 
         Debug.LogWarning($"Could not find or already collected piece: {pieceType}");
+    }
+
+    private IEnumerator PlayVoiceoverDelayed(AudioClip clip, float delay)
+    {
+        Debug.Log($"Coroutine started. Waiting {delay} seconds...");
+        yield return new WaitForSeconds(delay);
+
+        Debug.Log($"Delay complete. Playing voiceover now...");
+
+        if (voiceoverAudioSource == null)
+        {
+            Debug.LogError("❌ VoiceoverAudioSource is NULL!");
+            yield break;
+        }
+
+        if (clip == null)
+        {
+            Debug.LogError("❌ AudioClip is NULL!");
+            yield break;
+        }
+
+        Debug.Log($"🎤 Playing voiceover: {clip.name}");
+        Debug.Log($"   - Clip length: {clip.length}s");
+        Debug.Log($"   - Source volume: {voiceoverAudioSource.volume}");
+        Debug.Log($"   - Source enabled: {voiceoverAudioSource.enabled}");
+
+        voiceoverAudioSource.PlayOneShot(clip);
+
+        Debug.Log("✓ PlayOneShot called!");
     }
 
     private void CheckIfMaskComplete()
@@ -255,6 +338,14 @@ public class MaskController : MonoBehaviour
         }
 
         Debug.Log("🔄 Mask reset!");
+    }
+
+    public void StopVoiceover()
+    {
+        if (voiceoverAudioSource != null)
+        {
+            voiceoverAudioSource.Stop();
+        }
     }
 
     private void OnDrawGizmosSelected()
