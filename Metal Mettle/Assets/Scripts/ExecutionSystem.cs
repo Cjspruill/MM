@@ -71,6 +71,9 @@ public class ExecutionSystem : MonoBehaviour
     public UnityEngine.UI.Slider energyBarSlider; // Energy bar slider
     public float promptFadeSpeed = 5f;
 
+    [Header("Tutorial Integration")]
+    public TutorialManager tutorialManager;
+
     [Header("Debug")]
     public bool showDebug = true;
 
@@ -85,6 +88,7 @@ public class ExecutionSystem : MonoBehaviour
     private Health nearestStealthExecutableEnemy;
     private bool isExecuting = false;
     private InputSystem_Actions inputActions;
+    private int executionCount = 0;
 
     void Awake()
     {
@@ -108,6 +112,11 @@ public class ExecutionSystem : MonoBehaviour
         bloodSystem = GetComponent<BloodSystem>();
         playerAnimator = GetComponent<Animator>();
         mainCamera = Camera.main;
+
+        if (tutorialManager == null)
+        {
+            tutorialManager = FindFirstObjectByType<TutorialManager>();
+        }
 
         if (mainCamera != null)
         {
@@ -150,7 +159,23 @@ public class ExecutionSystem : MonoBehaviour
 
     void Update()
     {
+        // Don't process input during tutorials
+        if (TutorialManager.IsTutorialActive)
+            return;
+
         if (isExecuting) return;
+
+        // NEW: Don't build energy or show prompts if execution isn't unlocked
+        if (bloodSystem != null && !bloodSystem.IsAbilityUnlocked("execution"))
+        {
+            // Hide prompts if execution not unlocked
+            if (executionPromptUI != null)
+                executionPromptUI.SetActive(false);
+            if (stealthExecutionPromptUI != null)
+                stealthExecutionPromptUI.SetActive(false);
+
+            return; // Exit early - no execution functionality until unlocked
+        }
 
         // Decay energy over time when not hitting
         if (currentExecutionEnergy > 0)
@@ -187,6 +212,16 @@ public class ExecutionSystem : MonoBehaviour
 
     void OnExecutionPerformed(InputAction.CallbackContext context)
     {
+        // NEW: Check if execution is unlocked first
+        if (bloodSystem != null && !bloodSystem.IsAbilityUnlocked("execution"))
+        {
+            if (showDebug)
+            {
+                Debug.Log("⛔ Execution not unlocked yet!");
+            }
+            return;
+        }
+
         // Stealth execution takes priority
         if (nearestStealthExecutableEnemy != null)
         {
@@ -223,6 +258,12 @@ public class ExecutionSystem : MonoBehaviour
     /// </summary>
     public void AddExecutionEnergy()
     {
+        // NEW: Only add energy if execution is unlocked
+        if (bloodSystem != null && !bloodSystem.IsAbilityUnlocked("execution"))
+        {
+            return; // Don't build energy if not unlocked
+        }
+
         currentExecutionEnergy += energyPerHit;
         currentExecutionEnergy = Mathf.Min(currentExecutionEnergy, maxExecutionEnergy);
 
@@ -238,6 +279,17 @@ public class ExecutionSystem : MonoBehaviour
     {
         if (energyBarSlider != null)
         {
+            // NEW: Hide energy bar if execution not unlocked
+            if (bloodSystem != null && !bloodSystem.IsAbilityUnlocked("execution"))
+            {
+                energyBarSlider.gameObject.SetActive(false);
+                return;
+            }
+            else
+            {
+                energyBarSlider.gameObject.SetActive(true);
+            }
+
             // Update slider value (0 to 1)
             energyBarSlider.value = currentExecutionEnergy / maxExecutionEnergy;
 
@@ -451,13 +503,32 @@ public class ExecutionSystem : MonoBehaviour
             }
         }
 
+        // 13. TRIGGER FIRST EXECUTION TUTORIAL
+        executionCount++;
+        if (tutorialManager != null && executionCount == 1)
+        {
+            if (!tutorialManager.HasCompletedStep("first_execution_complete"))
+            {
+                tutorialManager.TriggerTutorial("first_execution_complete");
+            }
+        }
+
+        // 14. TRIGGER STEALTH EXECUTION TUTORIAL (first stealth kill)
+        if (isStealth && tutorialManager != null)
+        {
+            if (!tutorialManager.HasCompletedStep("first_stealth_execution"))
+            {
+                tutorialManager.TriggerTutorial("first_stealth_execution");
+            }
+        }
+
         isExecuting = false;
     }
 
     void SpawnExecutionBlood(Vector3 position)
     {
         // Get blood orb prefab from any nearby Health component as reference
-        Health referenceHealth = FindObjectOfType<Health>();
+        Health referenceHealth = FindFirstObjectByType<Health>();
         if (referenceHealth != null && referenceHealth.bloodOrbPrefab != null)
         {
             GameObject bloodOrbPrefab = referenceHealth.bloodOrbPrefab;
@@ -614,4 +685,5 @@ public class ExecutionSystem : MonoBehaviour
     public float GetExecutionEnergyPercent() => currentExecutionEnergy / maxExecutionEnergy;
     public bool CanExecute() => currentExecutionEnergy >= requiredEnergy && Time.time - lastExecutionTime >= executionCooldown;
     public bool IsExecuting() => isExecuting;
+    public int GetExecutionCount() => executionCount;
 }

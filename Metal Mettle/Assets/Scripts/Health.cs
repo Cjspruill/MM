@@ -127,6 +127,21 @@ public class Health : MonoBehaviour
             DropBloodOrbs(isHeavyAttack);
         }
 
+        // Check if this is player's first kill
+        TutorialManager tutorialManager = FindFirstObjectByType<TutorialManager>();
+        if (tutorialManager != null)
+        {
+            // Find OnFirstKill tutorial and trigger it
+            var step = tutorialManager.tutorialSteps.Find(s =>
+                s.triggerType == TutorialTriggerType.OnFirstKill);
+
+            if (step != null && !tutorialManager.HasCompletedStep(step.stepID))
+            {
+                tutorialManager.TriggerTutorial(step.stepID);
+            }
+        }
+
+
         onDeath?.Invoke();
 
         if (destroyOnDeath)

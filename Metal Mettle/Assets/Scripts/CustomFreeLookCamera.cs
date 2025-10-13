@@ -18,6 +18,7 @@ public class CustomFreeLookCamera : MonoBehaviour
     [Header("Collision")]
     public float collisionRadius = 0.3f;
     public float minDistance = 1f;
+    public float castStartOffset = 0.5f; // Start cast slightly away from focal point
     public LayerMask collisionLayers = -1;
     public float collisionSmoothing = 10f;
 
@@ -60,20 +61,25 @@ public class CustomFreeLookCamera : MonoBehaviour
         Quaternion rotation = Quaternion.Euler(currentPitch, player.eulerAngles.y, 0f);
         Vector3 desiredDirection = rotation * Vector3.back;
 
+        // Start cast slightly away from focal point to avoid self-collision
+        Vector3 castStart = focalPoint.position + desiredDirection * castStartOffset;
+        float castDistance = distance - castStartOffset;
+
         // Check for collisions and adjust distance
         float targetDistance = distance;
         RaycastHit hit;
 
         if (Physics.SphereCast(
-            focalPoint.position,
+            castStart,
             collisionRadius,
             desiredDirection,
             out hit,
-            distance,
-            collisionLayers))
+            castDistance,
+            collisionLayers,
+            QueryTriggerInteraction.Ignore)) // Ignore triggers
         {
             // Push camera in when hitting something
-            targetDistance = Mathf.Max(hit.distance - collisionRadius, minDistance);
+            targetDistance = Mathf.Max(hit.distance + castStartOffset, minDistance);
         }
 
         // Smoothly interpolate the actual distance
@@ -94,10 +100,13 @@ public class CustomFreeLookCamera : MonoBehaviour
 
         Quaternion rotation = Quaternion.Euler(currentPitch, player ? player.eulerAngles.y : 0f, 0f);
         Vector3 direction = rotation * Vector3.back;
+        Vector3 castStart = focalPoint.position + direction * castStartOffset;
 
         Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(focalPoint.position, collisionRadius);
-        Gizmos.DrawLine(focalPoint.position, focalPoint.position + direction * distance);
+        Gizmos.DrawWireSphere(castStart, collisionRadius);
+        Gizmos.color = Color.green;
+        Gizmos.DrawLine(castStart, castStart + direction * (distance - castStartOffset));
+        Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(focalPoint.position + direction * currentDistance, collisionRadius);
     }
 }

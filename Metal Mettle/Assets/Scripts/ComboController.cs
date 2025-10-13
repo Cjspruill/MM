@@ -126,6 +126,10 @@ public class ComboController : MonoBehaviour
 
     void Update()
     {
+
+        // Don't process input during tutorials
+        if (TutorialManager.IsTutorialActive)
+            return;
         // CRITICAL: Check if absorbing - if so, block ALL combat input
         bool isAbsorbing = animator != null && animator.GetBool("IsAbsorbing");
         if (isAbsorbing)

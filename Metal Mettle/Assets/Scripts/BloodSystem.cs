@@ -47,8 +47,16 @@ public class BloodSystem : MonoBehaviour
 
     [Header("References")]
     public RagdollController ragdollController;
-    public ObjectiveController objectiveController; // NEW
-    public MaskController maskController; // NEW
+    public ObjectiveController objectiveController;
+    public MaskController maskController;
+    public TutorialManager tutorialManager; // NEW
+
+    [Header("Ability Unlocks")] // NEW
+    public bool lightAttackUnlocked = true;
+    public bool heavyAttackUnlocked = true;
+    public bool bloodAbsorptionUnlocked = true;
+    public bool executionUnlocked = false;
+    // desperationUnlocked already exists above
 
     [Header("Events")]
     public UnityEvent onBloodDepleted;
@@ -59,6 +67,7 @@ public class BloodSystem : MonoBehaviour
     public bool showDebugLogs = false;
 
     private bool isDead = false;
+    private bool hasShownLowBloodWarning = false; // NEW: Track if low blood warning shown
 
     void Start()
     {
@@ -75,7 +84,7 @@ public class BloodSystem : MonoBehaviour
         // Auto-find objective controller if not assigned
         if (objectiveController == null)
         {
-            objectiveController = FindObjectOfType<ObjectiveController>();
+            objectiveController = FindFirstObjectByType<ObjectiveController>();
         }
 
         // Auto-find mask controller if not assigned
@@ -84,12 +93,32 @@ public class BloodSystem : MonoBehaviour
             maskController = GetComponent<MaskController>();
         }
 
+        // NEW: Auto-find tutorial manager if not assigned
+        if (tutorialManager == null)
+        {
+            tutorialManager = FindFirstObjectByType<TutorialManager>();
+        }
+
         if (deathScreenUI != null)
         {
             deathScreenUI.SetActive(false);
         }
 
         UpdateUI();
+
+        // NEW: Trigger starting tutorials
+        if (tutorialManager != null)
+        {
+            // Trigger ability tutorials for unlocked abilities
+            if (lightAttackUnlocked)
+                tutorialManager.TriggerAbilityTutorial("light_attack");
+            if (heavyAttackUnlocked)
+                tutorialManager.TriggerAbilityTutorial("heavy_attack");
+            if (bloodAbsorptionUnlocked)
+                tutorialManager.TriggerAbilityTutorial("blood_absorption");
+            if (executionUnlocked)
+                tutorialManager.TriggerAbilityTutorial("execution");
+        }
     }
 
     void Update()
@@ -104,6 +133,13 @@ public class BloodSystem : MonoBehaviour
         if (enableWithdrawalEffects)
         {
             ApplyWithdrawalEffects();
+        }
+
+        // NEW: Check for low blood tutorial
+        if (tutorialManager != null && !hasShownLowBloodWarning && GetBloodPercent() < 25f)
+        {
+            tutorialManager.TriggerTutorial("withdrawal_warning");
+            hasShownLowBloodWarning = true;
         }
 
         UpdateUI();
@@ -184,11 +220,60 @@ public class BloodSystem : MonoBehaviour
         onDesperationUsed?.Invoke();
     }
 
+    // NEW: Unlock ability method
+    public void UnlockAbility(string abilityName)
+    {
+        switch (abilityName)
+        {
+            case "light_attack":
+                lightAttackUnlocked = true;
+                break;
+            case "heavy_attack":
+                heavyAttackUnlocked = true;
+                break;
+            case "blood_absorption":
+                bloodAbsorptionUnlocked = true;
+                break;
+            case "execution":
+                executionUnlocked = true;
+                break;
+            case "desperation":
+                desperationUnlocked = true;
+                break;
+        }
+
+        // Trigger tutorial
+        if (tutorialManager != null)
+        {
+            tutorialManager.TriggerAbilityTutorial(abilityName);
+        }
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"🔓 Ability unlocked: {abilityName}");
+        }
+    }
+
+    // NEW: Check if ability is unlocked
+    public bool IsAbilityUnlocked(string abilityName)
+    {
+        switch (abilityName)
+        {
+            case "light_attack": return lightAttackUnlocked;
+            case "heavy_attack": return heavyAttackUnlocked;
+            case "blood_absorption": return bloodAbsorptionUnlocked;
+            case "execution": return executionUnlocked;
+            case "desperation": return desperationUnlocked;
+            default: return false;
+        }
+    }
+
     public void ResetMaxCapacity()
     {
         maxBlood = baseMaxBlood;
         desperationUsesThisLife = 0;
         isDead = false;
+        hasShownLowBloodWarning = false; // NEW: Reset low blood warning
 
         if (showDebugLogs)
         {

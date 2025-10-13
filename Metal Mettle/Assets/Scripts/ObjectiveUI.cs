@@ -13,7 +13,7 @@ public class ObjectiveUI : MonoBehaviour
     private void OnEnable()
     {
         // Force update when UI becomes active
-        var controller = FindObjectOfType<ObjectiveController>();
+        var controller = FindFirstObjectByType<ObjectiveController>();
         if (controller != null)
         {
             UpdateDisplay(controller);

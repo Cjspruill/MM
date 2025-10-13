@@ -10,6 +10,7 @@ public class PlayerController : MonoBehaviour
     private InputSystem_Actions controls;
     public BloodSystem bloodSystem;
     public ComboController comboController;
+    public TutorialManager tutorialManager;
 
     [Header("Movement Settings")]
     public float moveSpeed = 5f;
@@ -48,6 +49,7 @@ public class PlayerController : MonoBehaviour
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
         controls = InputManager.Instance.Controls;
+        tutorialManager = FindFirstObjectByType<TutorialManager>();
         controls.Enable();
 
         if (cameraTransform == null)
@@ -69,6 +71,10 @@ public class PlayerController : MonoBehaviour
 
     void OnAttackInput(InputAction.CallbackContext context)
     {
+
+        // Don't process input during tutorials
+        if (TutorialManager.IsTutorialActive)
+            return;
         // Lock cursor if not already locked
         if (Cursor.lockState != CursorLockMode.Locked && !PauseController.Instance.IsPaused())
         {
@@ -80,6 +86,10 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // Don't process input during tutorials
+        if (TutorialManager.IsTutorialActive)
+            return;
+
         // Check if grounded
         isGrounded = controller.isGrounded;
         if (isGrounded && velocity.y < 0)

@@ -72,7 +72,7 @@ public class MaskController : MonoBehaviour
         // Auto-find objective controller if not set
         if (objectiveController == null)
         {
-            objectiveController = FindObjectOfType<ObjectiveController>();
+            objectiveController = FindFirstObjectByType<ObjectiveController>();
         }
 
         if (showDebugLogs)
