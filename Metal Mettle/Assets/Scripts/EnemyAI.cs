@@ -17,14 +17,14 @@ public class EnemyAI : MonoBehaviour
     public float detectionRange = 15f;
     public float viewAngle = 90f;
     public LayerMask obstacleMask;
-    public LayerMask playerMask; // What layer is the player on
+    public LayerMask playerMask;
     public bool alwaysChase = false;
     public float memoryDuration = 3f;
-    public float visionCheckInterval = 0.2f; // How often to check vision
+    public float visionCheckInterval = 0.2f;
 
     [Header("Alert System")]
-    public float alertRadius = 5f; // Range to alert nearby enemies
-    public LayerMask enemyMask; // What layer are other enemies on
+    public float alertRadius = 5f;
+    public LayerMask enemyMask;
 
     [Header("Combat Settings")]
     public BoxCollider attackHitbox;
@@ -43,8 +43,8 @@ public class EnemyAI : MonoBehaviour
 
     [Header("Hitstun")]
     public float baseHitstunDuration = 0.4f;
-    public float stunCooldown = 1.0f; // Minimum time between stuns
-    public bool canBeStunnedDuringAttack = false; // Hyperarmor during attacks
+    public float stunCooldown = 1.0f;
+    public bool canBeStunnedDuringAttack = false;
 
     [Header("Avoidance Settings")]
     public float avoidanceRadius = 0.5f;
@@ -69,7 +69,10 @@ public class EnemyAI : MonoBehaviour
     private bool canSeePlayer = false;
     private float lastSeenTime = 0f;
     private float nextVisionCheck = 0f;
-    private float lastStunTime = -999f; // Track last stun time
+    private float lastStunTime = -999f;
+
+    // New: Track if we're in attack range
+    private bool wasInAttackRange = false;
 
     void Start()
     {
@@ -162,14 +165,32 @@ public class EnemyAI : MonoBehaviour
         // Handle combat and movement
         if (isChasing)
         {
-            if (distanceToPlayer <= attackRange)
+            bool inAttackRange = distanceToPlayer <= attackRange;
+
+            if (inAttackRange)
             {
+                // Just entered attack range - reset cooldown if we were chasing
+                if (!wasInAttackRange && !isAttacking)
+                {
+                    if (showDebug)
+                    {
+                        Debug.Log($"{gameObject.name} entered attack range - resetting cooldown");
+                    }
+                    nextAttackTime = Time.time; // Allow immediate attack
+                }
+
                 HandleCombatRange(distanceToPlayer);
+                wasInAttackRange = true;
             }
             else
             {
                 HandleChaseMovement();
+                wasInAttackRange = false;
             }
+        }
+        else
+        {
+            wasInAttackRange = false;
         }
     }
 
@@ -186,17 +207,16 @@ public class EnemyAI : MonoBehaviour
 
         if (angleToPlayer > viewAngle / 2f) return;
 
-        // Line of sight check - from eye level to player center
+        // Line of sight check
         Vector3 rayStart = transform.position + Vector3.up * 1.5f;
         Vector3 playerCenter = player.position + Vector3.up * 1f;
         Vector3 rayDirection = (playerCenter - rayStart).normalized;
         float rayDistance = Vector3.Distance(rayStart, playerCenter);
 
-        // First check: obstacles blocking view
+        // Check obstacles
         RaycastHit obstacleHit;
         if (Physics.Raycast(rayStart, rayDirection, out obstacleHit, rayDistance, obstacleMask))
         {
-            // Something is blocking vision
             if (showDebug)
             {
                 Debug.DrawLine(rayStart, obstacleHit.point, Color.red, visionCheckInterval);
@@ -204,7 +224,7 @@ public class EnemyAI : MonoBehaviour
             return;
         }
 
-        // Second check: can we see the player?
+        // Check player
         RaycastHit playerHit;
         if (Physics.Raycast(rayStart, rayDirection, out playerHit, rayDistance, playerMask))
         {
@@ -225,6 +245,8 @@ public class EnemyAI : MonoBehaviour
 
     void UpdateChaseState()
     {
+        bool wasChasing = isChasing;
+
         if (alwaysChase)
         {
             isChasing = true;
@@ -241,6 +263,22 @@ public class EnemyAI : MonoBehaviour
         else
         {
             isChasing = false;
+
+            // Clean up combat state when losing chase
+            if (wasChasing)
+            {
+                CancelCombat();
+            }
+        }
+
+        // Reset combat state when re-engaging after losing sight
+        if (!wasChasing && isChasing && !isAttacking)
+        {
+            nextAttackTime = Time.time;
+            if (showDebug)
+            {
+                Debug.Log($"{gameObject.name} re-engaged chase - resetting attack cooldown");
+            }
         }
     }
 
@@ -262,8 +300,18 @@ public class EnemyAI : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(directionToPlayer), 10f * Time.deltaTime);
         }
 
+        // Debug attack readiness
+        if (showDebug && !isAttacking)
+        {
+            float timeUntilAttack = nextAttackTime - Time.time;
+            if (timeUntilAttack > 0)
+            {
+                Debug.Log($"{gameObject.name} waiting {timeUntilAttack:F2}s before next attack");
+            }
+        }
+
         // Attack if ready
-        if (!isAttacking && Time.time >= nextAttackTime)
+        if (!isAttacking && !isStunned && Time.time >= nextAttackTime)
         {
             StartCombo();
         }
@@ -342,9 +390,14 @@ public class EnemyAI : MonoBehaviour
     {
         isStunned = false;
 
-        if (showDebug)
+        // Reset attack cooldown when recovering from stun
+        if (!isAttacking)
         {
-            Debug.Log($"{gameObject.name} recovered from stun");
+            nextAttackTime = Time.time;
+            if (showDebug)
+            {
+                Debug.Log($"{gameObject.name} recovered from stun - can attack immediately");
+            }
         }
     }
 
@@ -364,6 +417,17 @@ public class EnemyAI : MonoBehaviour
 
     void PerformAttack()
     {
+        // Safety check - ensure we're still valid to attack
+        if (!isChasing || isStunned)
+        {
+            if (showDebug)
+            {
+                Debug.Log($"{gameObject.name} attack cancelled - not chasing or stunned");
+            }
+            EndCombo();
+            return;
+        }
+
         currentComboStep++;
         isAttacking = true;
         lastAttackTime = Time.time;
@@ -432,7 +496,8 @@ public class EnemyAI : MonoBehaviour
             animator.SetBool("IsAttacking", false);
         }
 
-        if (currentComboStep < targetComboLength)
+        // Only continue combo if we're still in combat and chasing
+        if (currentComboStep < targetComboLength && inCombat && isChasing && !isStunned)
         {
             Invoke(nameof(PerformAttack), timeBetweenAttacks);
         }
@@ -458,7 +523,44 @@ public class EnemyAI : MonoBehaviour
 
         if (showDebug)
         {
-            Debug.Log($"{gameObject.name} combo finished. Cooldown: {comboCooldown}s");
+            Debug.Log($"{gameObject.name} combo finished. Next attack at: {nextAttackTime:F2} (current: {Time.time:F2})");
+        }
+    }
+
+    void CancelCombat()
+    {
+        // Cancel any pending invokes
+        CancelInvoke(nameof(PerformAttack));
+        CancelInvoke(nameof(ActivateHitbox));
+        CancelInvoke(nameof(DeactivateHitbox));
+
+        // Reset combat state
+        isAttacking = false;
+        inCombat = false;
+        currentComboStep = 0;
+        targetComboLength = 0;
+
+        // Deactivate hitbox safely
+        if (attackHitbox != null)
+        {
+            attackHitbox.enabled = false;
+        }
+
+        if (debugRenderer != null)
+        {
+            debugRenderer.enabled = false;
+        }
+
+        // Reset animator
+        if (animator != null)
+        {
+            animator.SetBool("IsAttacking", false);
+            animator.SetInteger("ComboStep", 0);
+        }
+
+        if (showDebug)
+        {
+            Debug.Log($"{gameObject.name} combat cancelled (lost chase)");
         }
     }
 
@@ -522,6 +624,12 @@ public class EnemyAI : MonoBehaviour
             canSeePlayer = true;
             lastSeenTime = Time.time;
 
+            // Reset attack cooldown when newly alerted
+            if (!isAttacking)
+            {
+                nextAttackTime = Time.time;
+            }
+
             if (showDebug)
             {
                 Debug.Log($"{gameObject.name} alerted to player!");
@@ -534,15 +642,12 @@ public class EnemyAI : MonoBehaviour
 
     void AlertNearbyEnemies()
     {
-        // Find all colliders in alert radius
         Collider[] nearbyColliders = Physics.OverlapSphere(transform.position, alertRadius, enemyMask);
 
         foreach (Collider col in nearbyColliders)
         {
-            // Don't alert self
             if (col.transform == transform) continue;
 
-            // Try to get EnemyAI component
             EnemyAI nearbyEnemy = col.GetComponent<EnemyAI>();
             if (nearbyEnemy != null && !nearbyEnemy.isChasing)
             {
@@ -556,7 +661,7 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    // Public getters for ExecutionSystem
+    // Public getters
     public bool IsAttacking() => isAttacking;
     public bool IsChasing() => isChasing;
 }

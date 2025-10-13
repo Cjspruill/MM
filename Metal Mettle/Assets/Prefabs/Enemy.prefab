@@ -289,7 +289,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   player: {fileID: 0}
-  chaseSpeed: 3.5
+  chaseSpeed: 4
   stoppingDistance: 1
   detectionRange: 15
   viewAngle: 90

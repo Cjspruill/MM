@@ -16527,7 +16527,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 5656
+  m_VersionIndex: 5680
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -24184,6 +24184,12 @@ MonoBehaviour:
   minPitch: -30
   maxPitch: 60
   transitionSpeed: 10
+  collisionRadius: 0.3
+  minDistance: 1
+  collisionLayers:
+    serializedVersion: 2
+    m_Bits: 4041
+  collisionSmoothing: 10
 --- !u!114 &8759432624525377957
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -24463,10 +24469,21 @@ MonoBehaviour:
   - RIGHT TEEP
   - LOW KICK LEFT
   - LOW KICK RIGHT
+  - DOWN ELBOWS LEFT
+  - DOWN ELBOWS RIGHT
+  - SIDE ELBOWS LEFT
+  - SIDE ELBOWS RIGHT
+  - SPINNING BACK ELBOW
+  - UPPERCUT ELBOWS LEFT
+  - UPPERCUT ELBOWS RIGHT
   heavyAttackStates:
   - RIGHT STRAIT KNEE
   - ROUNDHOUSE KICK
   - SWITCH KICK
+  - AXE KICK
+  - BACK KICK
+  - SPINNING BACK FIST
+  - WHEEL KICK
   enableDebugLogs: 1
   showDebugHitbox: 1
   lightColors:

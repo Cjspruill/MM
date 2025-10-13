@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 64de7f6793ad4054cb9d84e79dc01d29
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 9100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 203212
+  packageName: Combat animations - Kickboxing and Muay Thai V2
+  packageVersion: 1.0
+  assetPath: Assets/Combat animations - Kickboxing and Muay Thai V2/Animator Controller/Animator
+    Controller.controller
+  uploadId: 462358

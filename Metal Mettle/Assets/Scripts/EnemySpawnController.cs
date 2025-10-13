@@ -15,6 +15,10 @@ public class EnemySpawnController : MonoBehaviour
     [SerializeField] private float spawnCheckRadius = 1f;
     [SerializeField] private float minDistanceBetweenSpawns = 2f;
 
+    [Header("Rotation Settings")]
+    [SerializeField] private bool randomRotation = true;
+    [SerializeField] private bool randomYAxisOnly = true; // Only rotate on Y axis (typical for ground enemies)
+
     [Header("Testing")]
     [SerializeField] private bool spawnOnStart = false;
     [SerializeField] private int spawnCountOnStart = 1;
@@ -24,6 +28,12 @@ public class EnemySpawnController : MonoBehaviour
     [SerializeField] private bool enableDebugLogs = true;
 
     private List<Vector3> activeSpawnPositions = new List<Vector3>();
+
+    private void Awake()
+    {
+        // Clear spawn positions on scene load to fix restart issue
+        activeSpawnPositions.Clear();
+    }
 
     private void Start()
     {
@@ -50,6 +60,7 @@ public class EnemySpawnController : MonoBehaviour
             Debug.Log($"EnemySpawnController initialized with {enemyPrefabs.Count} enemy prefabs");
             Debug.Log($"Spawn area bounds: {spawnArea.bounds}");
             Debug.Log($"Spawn block layer mask value: {spawnBlockLayer.value}");
+            Debug.Log($"Random rotation: {randomRotation} (Y-axis only: {randomYAxisOnly})");
         }
 
         // Test spawn on start if enabled
@@ -94,13 +105,14 @@ public class EnemySpawnController : MonoBehaviour
             return null;
         }
 
-        GameObject enemy = Instantiate(enemyPrefabs[randomIndex], spawnPosition, Quaternion.identity);
+        Quaternion spawnRotation = GetRandomRotation();
+        GameObject enemy = Instantiate(enemyPrefabs[randomIndex], spawnPosition, spawnRotation);
 
         activeSpawnPositions.Add(spawnPosition);
 
         if (enableDebugLogs)
         {
-            Debug.Log($"EnemySpawnController: Spawned {enemy.name} at {spawnPosition}");
+            Debug.Log($"EnemySpawnController: Spawned {enemy.name} at {spawnPosition} with rotation {spawnRotation.eulerAngles}");
         }
 
         return enemy;
@@ -131,12 +143,13 @@ public class EnemySpawnController : MonoBehaviour
             return null;
         }
 
-        GameObject enemy = Instantiate(enemyPrefabs[index], spawnPosition, Quaternion.identity);
+        Quaternion spawnRotation = GetRandomRotation();
+        GameObject enemy = Instantiate(enemyPrefabs[index], spawnPosition, spawnRotation);
         activeSpawnPositions.Add(spawnPosition);
 
         if (enableDebugLogs)
         {
-            Debug.Log($"EnemySpawnController: Spawned {enemy.name} at {spawnPosition}");
+            Debug.Log($"EnemySpawnController: Spawned {enemy.name} at {spawnPosition} with rotation {spawnRotation.eulerAngles}");
         }
 
         return enemy;
@@ -164,6 +177,33 @@ public class EnemySpawnController : MonoBehaviour
         }
 
         return spawnedEnemies;
+    }
+
+    /// <summary>
+    /// Gets a random rotation based on settings
+    /// </summary>
+    private Quaternion GetRandomRotation()
+    {
+        if (!randomRotation)
+        {
+            return Quaternion.identity;
+        }
+
+        if (randomYAxisOnly)
+        {
+            // Random rotation only on Y axis (0-360 degrees)
+            float randomYRotation = Random.Range(0f, 360f);
+            return Quaternion.Euler(0f, randomYRotation, 0f);
+        }
+        else
+        {
+            // Completely random rotation on all axes
+            return Quaternion.Euler(
+                Random.Range(0f, 360f),
+                Random.Range(0f, 360f),
+                Random.Range(0f, 360f)
+            );
+        }
     }
 
     /// <summary>

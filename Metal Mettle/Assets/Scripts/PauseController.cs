@@ -25,10 +25,9 @@ public class PauseController : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
-        // Note: NOT using DontDestroyOnLoad - instance is scene-specific
 
+        // Note: NOT using DontDestroyOnLoad - instance is scene-specific
         controls = new InputSystem_Actions();
         pauseAction = controls.Player.Pause;
 
@@ -113,6 +112,7 @@ public class PauseController : MonoBehaviour
     public void RestartLevel()
     {
         Time.timeScale = 1f;
+
         Scene currentScene = SceneManager.GetActiveScene();
         SceneManager.LoadScene(currentScene.name);
     }
