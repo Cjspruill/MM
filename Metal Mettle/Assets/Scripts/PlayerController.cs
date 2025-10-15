@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class PlayerController : MonoBehaviour
+public class PlayerController : MonoBehaviour, ICutsceneControllable
 {
     [Header("References")]
     public Transform cameraTransform;
@@ -37,6 +37,8 @@ public class PlayerController : MonoBehaviour
     private bool isGrounded;
     private bool justStoppedSprinting = false;
     private bool wasSprinting = false;
+    private bool isInCutscene = false; // Track cutscene state
+    private Quaternion lockedRotation; // Store rotation during cutscene
 
     // Animation smoothing
     private float currentAnimSpeed; // Direction Y (forward/back)
@@ -69,12 +71,57 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        // Re-enable controls when script is enabled (unless we're in a cutscene)
+        if (controls != null && !isInCutscene)
+        {
+            controls.Enable();
+            Debug.Log("PlayerController: Input controls enabled");
+        }
+    }
+
+    #region ICutsceneControllable Implementation
+
+    public void OnCutsceneStart()
+    {
+        Debug.Log("PlayerController: Cutscene started - Disabling input");
+        isInCutscene = true;
+
+        if (controls != null)
+        {
+            controls.Disable();
+        }
+
+        // Reset animation to idle during cutscene
+        if (animator != null)
+        {
+            UpdateAnimationParameters(0f, 0f);
+        }
+    }
+
+    public void OnCutsceneEnd()
+    {
+        Debug.Log("PlayerController: Cutscene ended - Re-enabling input");
+        isInCutscene = false;
+
+        if (controls != null)
+        {
+            controls.Enable();
+        }
+    }
+
+    #endregion
+
     void OnAttackInput(InputAction.CallbackContext context)
     {
+        // Don't process input during cutscenes
+        if (isInCutscene) return;
 
         // Don't process input during tutorials
         if (TutorialManager.IsTutorialActive)
             return;
+
         // Lock cursor if not already locked
         if (Cursor.lockState != CursorLockMode.Locked && !PauseController.Instance.IsPaused())
         {
@@ -86,6 +133,18 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        // Don't process input during cutscenes
+        if (isInCutscene)
+        {
+            // Still apply gravity during cutscene
+            if (!isGrounded)
+            {
+                velocity.y += gravity * Time.deltaTime;
+                controller.Move(velocity * Time.deltaTime);
+            }
+            return;
+        }
+
         // Don't process input during tutorials
         if (TutorialManager.IsTutorialActive)
             return;
@@ -194,7 +253,7 @@ public class PlayerController : MonoBehaviour
         // Update animation parameters
         UpdateAnimationParameters(targetSpeed, targetDirection);
 
-        // Rotation - always face camera forward
+        // Rotation - always face camera forward (SKIP during cutscenes handled by early return above)
         if (cameraForward.magnitude > 0.01f)
         {
             Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
@@ -249,6 +308,11 @@ public class PlayerController : MonoBehaviour
         {
             controls.Player.Attack.performed -= OnAttackInput;
         }
-        controls.Disable();
+
+        if (controls != null)
+        {
+            controls.Disable();
+            Debug.Log("PlayerController: Input controls disabled");
+        }
     }
 }

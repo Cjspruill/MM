@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Events;
 using System.Collections.Generic;
 
@@ -32,12 +32,29 @@ public class ObjectiveController : MonoBehaviour
 
     [Header("Events")]
     public UnityEvent onAllObjectivesComplete;
+    public UnityEvent onTaskCompleted; // NEW: Fires when any task completes
+    public UnityEvent onObjectiveChanged; // NEW: Fires when objective changes
 
     [Header("UI References (Optional)")]
     [SerializeField] private ObjectiveUI objectiveUI;
 
     private void Start()
     {
+        // DEBUG: Log initial state
+        Debug.Log($"=== ObjectiveController Start ===");
+        Debug.Log($"Current Objective Index: {currentObjectiveIndex}");
+        Debug.Log($"Total Objectives: {objectives.Count}");
+
+        if (currentObjectiveIndex < objectives.Count)
+        {
+            Debug.Log($"Starting Objective: {objectives[currentObjectiveIndex].objectiveName}");
+            Debug.Log($"Tasks in this objective: {objectives[currentObjectiveIndex].tasks.Count}");
+            foreach (var task in objectives[currentObjectiveIndex].tasks)
+            {
+                Debug.Log($"  - Task: {task.taskName} (Complete: {task.isComplete})");
+            }
+        }
+
         UpdateObjectiveUI();
     }
 
@@ -58,11 +75,15 @@ public class ObjectiveController : MonoBehaviour
         }
 
         Debug.Log("Objectives reset!");
+        onObjectiveChanged?.Invoke();
         UpdateObjectiveUI();
     }
 
     public void CompleteTask(string taskName)
     {
+        Debug.Log($"=== CompleteTask Called: {taskName} ===");
+        Debug.Log($"Current Objective Index: {currentObjectiveIndex}");
+
         if (currentObjectiveIndex >= objectives.Count)
         {
             Debug.LogWarning("No active objective to complete task for!");
@@ -70,6 +91,7 @@ public class ObjectiveController : MonoBehaviour
         }
 
         Objective currentObjective = objectives[currentObjectiveIndex];
+        Debug.Log($"Current Objective: {currentObjective.objectiveName}");
 
         foreach (ObjectiveTask task in currentObjective.tasks)
         {
@@ -77,7 +99,9 @@ public class ObjectiveController : MonoBehaviour
             {
                 task.isComplete = true;
                 task.onTaskComplete?.Invoke();
-                Debug.Log($"Task completed: {taskName}");
+                Debug.Log($"✓ Task completed: {taskName}");
+
+                onTaskCompleted?.Invoke(); // NEW: Notify UI of task completion
 
                 CheckObjectiveCompletion();
                 UpdateObjectiveUI();
@@ -85,7 +109,12 @@ public class ObjectiveController : MonoBehaviour
             }
         }
 
-        Debug.LogWarning($"Task not found or already complete: {taskName}");
+        Debug.LogWarning($"Task not found or already complete: {taskName} in objective '{currentObjective.objectiveName}'");
+        Debug.LogWarning($"Available tasks in this objective:");
+        foreach (ObjectiveTask task in currentObjective.tasks)
+        {
+            Debug.LogWarning($"  - {task.taskName} (Complete: {task.isComplete})");
+        }
     }
 
     private void CheckObjectiveCompletion()
@@ -142,6 +171,7 @@ public class ObjectiveController : MonoBehaviour
         else
         {
             Debug.Log($"New objective: {objectives[currentObjectiveIndex].objectiveName}");
+            onObjectiveChanged?.Invoke(); // NEW: Notify UI of objective change
         }
 
         UpdateObjectiveUI();
@@ -154,6 +184,39 @@ public class ObjectiveController : MonoBehaviour
             return objectives[currentObjectiveIndex];
         }
         return null;
+    }
+
+    // NEW: Get all tasks for current objective
+    public List<ObjectiveTask> GetCurrentTasks()
+    {
+        if (currentObjectiveIndex < objectives.Count)
+        {
+            return objectives[currentObjectiveIndex].tasks;
+        }
+        return new List<ObjectiveTask>();
+    }
+
+    // NEW: Get specific task by name from current objective
+    public ObjectiveTask GetTask(string taskName)
+    {
+        if (currentObjectiveIndex >= objectives.Count) return null;
+
+        Objective currentObjective = objectives[currentObjectiveIndex];
+        foreach (ObjectiveTask task in currentObjective.tasks)
+        {
+            if (task.taskName == taskName)
+            {
+                return task;
+            }
+        }
+        return null;
+    }
+
+    // NEW: Check if specific task is complete
+    public bool IsTaskComplete(string taskName)
+    {
+        ObjectiveTask task = GetTask(taskName);
+        return task != null && task.isComplete;
     }
 
     public float GetCurrentObjectiveProgress()
@@ -186,6 +249,27 @@ public class ObjectiveController : MonoBehaviour
         return $"{completed}/{current.tasks.Count}";
     }
 
+    // NEW: Get completed task count
+    public int GetCompletedTaskCount()
+    {
+        if (currentObjectiveIndex >= objectives.Count) return 0;
+
+        Objective current = objectives[currentObjectiveIndex];
+        int completed = 0;
+        foreach (ObjectiveTask task in current.tasks)
+        {
+            if (task.isComplete) completed++;
+        }
+        return completed;
+    }
+
+    // NEW: Get total task count
+    public int GetTotalTaskCount()
+    {
+        if (currentObjectiveIndex >= objectives.Count) return 0;
+        return objectives[currentObjectiveIndex].tasks.Count;
+    }
+
     private void UpdateObjectiveUI()
     {
         if (objectiveUI != null)
@@ -210,4 +294,9 @@ public class ObjectiveController : MonoBehaviour
         UpdateObjectiveUI();
     }
 
+    // NEW: Public access to objectives list for UI/Door systems
+    public List<Objective> GetAllObjectives()
+    {
+        return objectives;
+    }
 }

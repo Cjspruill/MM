@@ -6,8 +6,8 @@ public class EnemySpawnController : MonoBehaviour
     [Header("Enemy Prefabs")]
     [SerializeField] private List<GameObject> enemyPrefabs = new List<GameObject>();
 
-    [Header("Spawn Area")]
-    [SerializeField] private BoxCollider spawnArea;
+    [Header("Spawn Areas")]
+    [SerializeField] private BoxCollider[] spawnAreas; // CHANGED: Now an array
     [SerializeField] private LayerMask spawnBlockLayer;
 
     [Header("Spawn Settings")]
@@ -15,9 +15,13 @@ public class EnemySpawnController : MonoBehaviour
     [SerializeField] private float spawnCheckRadius = 1f;
     [SerializeField] private float minDistanceBetweenSpawns = 2f;
 
+    [Header("Area Selection")]
+    [SerializeField] private bool useRandomArea = true; // Pick random spawn area each time
+    [SerializeField] private int preferredAreaIndex = 0; // If not random, use this area
+
     [Header("Rotation Settings")]
     [SerializeField] private bool randomRotation = true;
-    [SerializeField] private bool randomYAxisOnly = true; // Only rotate on Y axis (typical for ground enemies)
+    [SerializeField] private bool randomYAxisOnly = true;
 
     [Header("Testing")]
     [SerializeField] private bool spawnOnStart = false;
@@ -31,19 +35,24 @@ public class EnemySpawnController : MonoBehaviour
 
     private void Awake()
     {
-        // Clear spawn positions on scene load to fix restart issue
         activeSpawnPositions.Clear();
     }
 
     private void Start()
     {
-        // Find or validate spawn area
-        if (spawnArea == null)
+        // Find or validate spawn areas
+        if (spawnAreas == null || spawnAreas.Length == 0)
         {
-            spawnArea = GetComponent<BoxCollider>();
-            if (spawnArea == null)
+            // Try to find BoxColliders on this GameObject or children
+            BoxCollider localCollider = GetComponent<BoxCollider>();
+            if (localCollider != null)
             {
-                Debug.LogError("EnemySpawnController: No BoxCollider found! Please assign a spawn area or add a BoxCollider component.");
+                spawnAreas = new BoxCollider[] { localCollider };
+                Debug.Log("EnemySpawnController: Using BoxCollider on this GameObject as spawn area");
+            }
+            else
+            {
+                Debug.LogError("EnemySpawnController: No spawn areas assigned! Add BoxColliders to the array.");
                 return;
             }
         }
@@ -58,7 +67,14 @@ public class EnemySpawnController : MonoBehaviour
         if (enableDebugLogs)
         {
             Debug.Log($"EnemySpawnController initialized with {enemyPrefabs.Count} enemy prefabs");
-            Debug.Log($"Spawn area bounds: {spawnArea.bounds}");
+            Debug.Log($"Spawn areas: {spawnAreas.Length}");
+            for (int i = 0; i < spawnAreas.Length; i++)
+            {
+                if (spawnAreas[i] != null)
+                {
+                    Debug.Log($"  Area {i}: {spawnAreas[i].gameObject.name} - Bounds: {spawnAreas[i].bounds}");
+                }
+            }
             Debug.Log($"Spawn block layer mask value: {spawnBlockLayer.value}");
             Debug.Log($"Random rotation: {randomRotation} (Y-axis only: {randomYAxisOnly})");
         }
@@ -82,9 +98,9 @@ public class EnemySpawnController : MonoBehaviour
             return null;
         }
 
-        if (spawnArea == null)
+        if (spawnAreas == null || spawnAreas.Length == 0)
         {
-            Debug.LogError("EnemySpawnController: No spawn area assigned!");
+            Debug.LogError("EnemySpawnController: No spawn areas assigned!");
             return null;
         }
 
@@ -156,6 +172,53 @@ public class EnemySpawnController : MonoBehaviour
     }
 
     /// <summary>
+    /// Spawns an enemy in a specific area
+    /// </summary>
+    public GameObject SpawnEnemyInArea(int areaIndex, int enemyIndex = -1)
+    {
+        if (areaIndex < 0 || areaIndex >= spawnAreas.Length)
+        {
+            Debug.LogError($"EnemySpawnController: Area index {areaIndex} out of range!");
+            return null;
+        }
+
+        if (spawnAreas[areaIndex] == null)
+        {
+            Debug.LogError($"EnemySpawnController: Spawn area at index {areaIndex} is null!");
+            return null;
+        }
+
+        // Get spawn position from specific area
+        Vector3 spawnPosition = GetValidSpawnPositionInArea(spawnAreas[areaIndex]);
+
+        if (spawnPosition == Vector3.zero)
+        {
+            Debug.LogWarning($"EnemySpawnController: Could not find valid position in area {areaIndex}");
+            return null;
+        }
+
+        // Spawn random or specific enemy
+        int spawnIndex = enemyIndex >= 0 ? enemyIndex : Random.Range(0, enemyPrefabs.Count);
+
+        if (spawnIndex >= enemyPrefabs.Count || enemyPrefabs[spawnIndex] == null)
+        {
+            Debug.LogError($"EnemySpawnController: Invalid enemy index {spawnIndex}");
+            return null;
+        }
+
+        Quaternion spawnRotation = GetRandomRotation();
+        GameObject enemy = Instantiate(enemyPrefabs[spawnIndex], spawnPosition, spawnRotation);
+        activeSpawnPositions.Add(spawnPosition);
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"EnemySpawnController: Spawned {enemy.name} in area {areaIndex} at {spawnPosition}");
+        }
+
+        return enemy;
+    }
+
+    /// <summary>
     /// Spawns multiple random enemies
     /// </summary>
     public List<GameObject> SpawnMultipleEnemies(int count)
@@ -191,13 +254,11 @@ public class EnemySpawnController : MonoBehaviour
 
         if (randomYAxisOnly)
         {
-            // Random rotation only on Y axis (0-360 degrees)
             float randomYRotation = Random.Range(0f, 360f);
             return Quaternion.Euler(0f, randomYRotation, 0f);
         }
         else
         {
-            // Completely random rotation on all axes
             return Quaternion.Euler(
                 Random.Range(0f, 360f),
                 Random.Range(0f, 360f),
@@ -207,26 +268,69 @@ public class EnemySpawnController : MonoBehaviour
     }
 
     /// <summary>
-    /// Gets a valid spawn position within the spawn area
+    /// Gets a valid spawn position from any spawn area
     /// </summary>
     private Vector3 GetValidSpawnPosition()
     {
-        if (spawnArea == null)
+        if (spawnAreas == null || spawnAreas.Length == 0)
+        {
+            Debug.LogError("EnemySpawnController: No spawn areas assigned!");
+            return Vector3.zero;
+        }
+
+        // Choose which area to spawn in
+        BoxCollider chosenArea;
+        if (useRandomArea)
+        {
+            // Pick a random valid area
+            List<BoxCollider> validAreas = new List<BoxCollider>();
+            foreach (BoxCollider area in spawnAreas)
+            {
+                if (area != null) validAreas.Add(area);
+            }
+
+            if (validAreas.Count == 0)
+            {
+                Debug.LogError("EnemySpawnController: No valid spawn areas!");
+                return Vector3.zero;
+            }
+
+            chosenArea = validAreas[Random.Range(0, validAreas.Count)];
+        }
+        else
+        {
+            // Use preferred area
+            if (preferredAreaIndex >= spawnAreas.Length || spawnAreas[preferredAreaIndex] == null)
+            {
+                Debug.LogError($"EnemySpawnController: Preferred area index {preferredAreaIndex} is invalid!");
+                return Vector3.zero;
+            }
+            chosenArea = spawnAreas[preferredAreaIndex];
+        }
+
+        return GetValidSpawnPositionInArea(chosenArea);
+    }
+
+    /// <summary>
+    /// Gets a valid spawn position within a specific area
+    /// </summary>
+    private Vector3 GetValidSpawnPositionInArea(BoxCollider area)
+    {
+        if (area == null)
         {
             Debug.LogError("EnemySpawnController: Spawn area is null!");
             return Vector3.zero;
         }
 
-        Bounds bounds = spawnArea.bounds;
+        Bounds bounds = area.bounds;
 
         if (enableDebugLogs)
         {
-            Debug.Log($"EnemySpawnController: Searching for spawn position in bounds {bounds.min} to {bounds.max}");
+            Debug.Log($"EnemySpawnController: Searching for spawn position in {area.gameObject.name} bounds {bounds.min} to {bounds.max}");
         }
 
         for (int i = 0; i < maxSpawnAttempts; i++)
         {
-            // Generate random position within bounds
             Vector3 randomPosition = new Vector3(
                 Random.Range(bounds.min.x, bounds.max.x),
                 Random.Range(bounds.min.y, bounds.max.y),
@@ -238,7 +342,6 @@ public class EnemySpawnController : MonoBehaviour
                 Debug.Log($"EnemySpawnController: Attempt {i + 1} - Testing position {randomPosition}");
             }
 
-            // Check if position is valid
             if (IsValidSpawnPosition(randomPosition))
             {
                 if (enableDebugLogs)
@@ -249,8 +352,8 @@ public class EnemySpawnController : MonoBehaviour
             }
         }
 
-        Debug.LogWarning($"EnemySpawnController: Failed to find valid position after {maxSpawnAttempts} attempts");
-        return Vector3.zero; // Failed to find valid position
+        Debug.LogWarning($"EnemySpawnController: Failed to find valid position in {area.gameObject.name} after {maxSpawnAttempts} attempts");
+        return Vector3.zero;
     }
 
     /// <summary>
@@ -313,11 +416,23 @@ public class EnemySpawnController : MonoBehaviour
     {
         if (!showDebugGizmos) return;
 
-        // Draw spawn area bounds
-        if (spawnArea != null)
+        // Draw all spawn area bounds
+        if (spawnAreas != null)
         {
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireCube(spawnArea.bounds.center, spawnArea.bounds.size);
+            for (int i = 0; i < spawnAreas.Length; i++)
+            {
+                if (spawnAreas[i] != null)
+                {
+                    // Different color for each area
+                    Gizmos.color = new Color(0f, 1f, 0f, 0.3f + (i * 0.1f));
+                    Gizmos.DrawWireCube(spawnAreas[i].bounds.center, spawnAreas[i].bounds.size);
+
+                    // Draw area index label
+#if UNITY_EDITOR
+                    UnityEditor.Handles.Label(spawnAreas[i].bounds.center + Vector3.up * 2, $"Area {i}");
+#endif
+                }
+            }
         }
 
         // Draw active spawn positions
@@ -326,16 +441,9 @@ public class EnemySpawnController : MonoBehaviour
         {
             Gizmos.DrawWireSphere(pos, spawnCheckRadius);
         }
-
-        // Draw spawn check radius at center for reference
-        if (spawnArea != null)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(spawnArea.bounds.center, spawnCheckRadius);
-        }
     }
 
-    // Editor testing method
+    // Editor testing methods
     [ContextMenu("Test Spawn One Enemy")]
     private void TestSpawnOne()
     {
@@ -346,5 +454,16 @@ public class EnemySpawnController : MonoBehaviour
     private void TestSpawnFive()
     {
         SpawnMultipleEnemies(5);
+    }
+
+    [ContextMenu("Test Spawn In Each Area")]
+    private void TestSpawnInEachArea()
+    {
+        if (spawnAreas == null) return;
+
+        for (int i = 0; i < spawnAreas.Length; i++)
+        {
+            SpawnEnemyInArea(i);
+        }
     }
 }

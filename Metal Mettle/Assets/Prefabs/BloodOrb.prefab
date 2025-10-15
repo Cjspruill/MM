@@ -135,6 +135,13 @@ MonoBehaviour:
   airDrag: 1.5
   surfaceStickiness: 0.3
   enableDripTrail: 1
+  spawnSplatterOnImpact: 1
+  minImpactVelocity: 2
+  splatOnLayers:
+    serializedVersion: 2
+    m_Bits: 128
+  scaleSplatterWithOrb: 1
+  splatterSizeMultiplier: 2
   absorptionRange: 7
   absorptionDuration: 0.75
   absorptionCurve:

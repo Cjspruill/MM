@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class CustomFreeLookCamera : MonoBehaviour
+public class CustomFreeLookCamera : MonoBehaviour, ICutsceneControllable
 {
     [Header("References")]
     public Transform player;
@@ -28,6 +28,7 @@ public class CustomFreeLookCamera : MonoBehaviour
     private float currentPitch = 0f;
     private bool usingGamepad = false;
     private float currentDistance;
+    private bool isInCutscene = false; // Track cutscene state
 
     private void Start()
     {
@@ -36,10 +37,69 @@ public class CustomFreeLookCamera : MonoBehaviour
         currentDistance = distance;
     }
 
-    private void OnDisable() => controls.Disable();
+    private void OnEnable()
+    {
+        // Re-enable controls when script is enabled (unless we're in a cutscene)
+        if (controls != null && !isInCutscene)
+        {
+            controls.Enable();
+            Debug.Log("CustomFreeLookCamera: Input controls enabled");
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (controls != null)
+        {
+            controls.Disable();
+            Debug.Log("CustomFreeLookCamera: Input controls disabled");
+        }
+    }
+
+    #region ICutsceneControllable Implementation
+
+    public void OnCutsceneStart()
+    {
+        Debug.Log("CustomFreeLookCamera: Cutscene started - Disabling input");
+        isInCutscene = true;
+
+        if (controls != null)
+        {
+            controls.Disable();
+        }
+
+        // Store the player's current rotation so we can restore it
+        if (player != null)
+        {
+            Debug.Log($"Storing player rotation: {player.eulerAngles.y}");
+        }
+    }
+
+    public void OnCutsceneEnd()
+    {
+        Debug.Log("CustomFreeLookCamera: Cutscene ended - Re-enabling input");
+        isInCutscene = false;
+
+        if (controls != null)
+        {
+            controls.Enable();
+        }
+
+        // Player rotation will naturally resume from where it was
+    }
+
+    #endregion
 
     private void LateUpdate()
     {
+        // CRITICAL: Skip ALL camera updates during cutscenes
+        // This must be the FIRST check before any other code runs
+        if (isInCutscene)
+        {
+            Debug.LogWarning("LateUpdate running during cutscene! This shouldn't happen.");
+            return;
+        }
+
         if (!player || !focalPoint) return;
 
         // Detect input device

@@ -15,6 +15,12 @@ public class MaskController : MonoBehaviour
         [Header("Voiceover")]
         [Tooltip("Voiceover dialogue that plays when this piece is collected")]
         public AudioClip voiceoverClip;
+
+        [Header("Ability Unlock")]
+        [Tooltip("Ability to unlock when this piece is collected (leave empty for none)")]
+        public string abilityToUnlock = ""; // Options: light_attack, heavy_attack, blood_absorption, execution, desperation
+        [Tooltip("Show unlock message in console")]
+        public bool showUnlockMessage = true;
     }
 
     [Header("Mask Pieces on Character")]
@@ -24,24 +30,30 @@ public class MaskController : MonoBehaviour
     [SerializeField] private LayerMask collectibleLayer;
     [SerializeField] private float collectionRange = 2f;
 
+    [Header("Cutscene Settings")]
+    [SerializeField] private bool playCutsceneOnCollection = true;
+    [SerializeField] private Transform playerHeadTransform;
+    [SerializeField] private float cutsceneDuration = 3f;
+    [SerializeField] private float cameraDistance = 1.5f;
+    [SerializeField] private float horizontalAngle = 45f;
+    [SerializeField] private float verticalAngle = 10f;
+    [SerializeField] private Vector3 lookAtOffset = new Vector3(0, 0, 0);
+    [Tooltip("Time before voiceover starts (allows cutscene to settle)")]
+    [SerializeField] private float voiceoverStartDelay = 1f;
+
     [Header("Input")]
     [SerializeField] private InputSystem_Actions controls;
     private InputAction executionInput;
 
-    [Header("Objective System")]
+    [Header("References")]
     [SerializeField] private ObjectiveController objectiveController;
+    [SerializeField] private BloodSystem bloodSystem;
     [SerializeField] private string maskCollectionTaskPrefix = "Collect";
 
     [Header("Audio")]
     [SerializeField] private AudioClip collectionSound;
-    [Tooltip("Audio source for collection sound effects (short sounds)")]
     [SerializeField] private AudioSource sfxAudioSource;
-
-    [Tooltip("Audio source for voiceover dialogue (can be separate for better control)")]
     [SerializeField] private AudioSource voiceoverAudioSource;
-
-    [Tooltip("Delay before playing voiceover after collection sound")]
-    [SerializeField] private float voiceoverDelay = 0.5f;
 
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
@@ -77,7 +89,7 @@ public class MaskController : MonoBehaviour
             }
         }
 
-        // Setup audio sources - create them if they don't exist
+        // Setup audio sources
         AudioSource[] sources = GetComponents<AudioSource>();
 
         if (sfxAudioSource == null)
@@ -93,7 +105,6 @@ public class MaskController : MonoBehaviour
             }
         }
 
-        // If no separate voiceover source specified, create or use second one
         if (voiceoverAudioSource == null)
         {
             if (sources.Length > 1)
@@ -107,25 +118,54 @@ public class MaskController : MonoBehaviour
             }
         }
 
-        // Configure voiceover audio source for dialogue
+        // Configure voiceover audio source
         if (voiceoverAudioSource != null)
         {
             voiceoverAudioSource.playOnAwake = false;
-            voiceoverAudioSource.spatialBlend = 0f; // 2D audio for voiceover
+            voiceoverAudioSource.spatialBlend = 0f;
             Debug.Log($"Voiceover AudioSource configured: {voiceoverAudioSource.gameObject.name}");
         }
 
-        // Auto-find objective controller if not set
+        // Auto-find objective controller
         if (objectiveController == null)
         {
             objectiveController = FindFirstObjectByType<ObjectiveController>();
         }
 
+        // Auto-find blood system
+        if (bloodSystem == null)
+        {
+            bloodSystem = GetComponent<BloodSystem>();
+            if (bloodSystem == null)
+            {
+                Debug.LogWarning("BloodSystem not found! Ability unlocks will not work.");
+            }
+        }
+
+        // Auto-find player head
+        if (playerHeadTransform == null)
+        {
+            Animator animator = GetComponent<Animator>();
+            if (animator != null)
+            {
+                playerHeadTransform = animator.GetBoneTransform(HumanBodyBones.Head);
+                if (playerHeadTransform != null)
+                {
+                    Debug.Log($"Auto-found player head: {playerHeadTransform.name}");
+                }
+            }
+
+            if (playerHeadTransform == null)
+            {
+                Debug.LogWarning("Player head transform not found! Using player root as fallback.");
+                playerHeadTransform = transform;
+            }
+        }
+
         if (showDebugLogs)
         {
             Debug.Log($"MaskController started. {maskPieces.Count} pieces configured.");
-            Debug.Log($"SFX Source: {(sfxAudioSource != null ? "Found" : "Missing")}");
-            Debug.Log($"Voiceover Source: {(voiceoverAudioSource != null ? "Found" : "Missing")}");
+            Debug.Log($"Cutscene enabled: {playCutsceneOnCollection}");
         }
     }
 
@@ -137,7 +177,6 @@ public class MaskController : MonoBehaviour
     private void CheckForCollectibles()
     {
         Collider[] nearbyObjects = Physics.OverlapSphere(transform.position, collectionRange, collectibleLayer);
-
         nearbyCollectible = null;
 
         foreach (Collider col in nearbyObjects)
@@ -147,11 +186,6 @@ public class MaskController : MonoBehaviour
             if (collectible != null && collectible.isAccessible)
             {
                 nearbyCollectible = collectible;
-
-                if (showDebugLogs)
-                {
-                    Debug.Log($"Nearby collectible found: {collectible.pieceType} (accessible: {collectible.isAccessible})");
-                }
                 break;
             }
         }
@@ -159,11 +193,6 @@ public class MaskController : MonoBehaviour
 
     private void OnExecutionPressed(InputAction.CallbackContext context)
     {
-        if (showDebugLogs)
-        {
-            Debug.Log($"Execution pressed. Nearby collectible: {(nearbyCollectible != null ? nearbyCollectible.pieceType : "none")}");
-        }
-
         if (nearbyCollectible != null && nearbyCollectible.isAccessible)
         {
             string pieceType = nearbyCollectible.pieceType;
@@ -206,72 +235,104 @@ public class MaskController : MonoBehaviour
                     piece.pieceOnCharacter.SetActive(true);
                     Debug.Log($"✓ Collected {pieceType}! Piece activated on character.");
 
-                    // Play collection sound effect
+                    // Play collection sound
                     if (sfxAudioSource != null && collectionSound != null)
                     {
                         sfxAudioSource.PlayOneShot(collectionSound);
-                        Debug.Log("Played collection SFX");
                     }
 
-                    // Check voiceover clip
-                    if (piece.voiceoverClip != null)
-                    {
-                        Debug.Log($"🎤 Voiceover clip found: {piece.voiceoverClip.name}, starting coroutine...");
-                        StartCoroutine(PlayVoiceoverDelayed(piece.voiceoverClip, voiceoverDelay));
-                    }
-                    else
-                    {
-                        Debug.LogError($"❌ NO VOICEOVER CLIP assigned for {pieceType}!");
-                    }
-
-                    // NOTIFY OBJECTIVE CONTROLLER
+                    // Complete objective
                     if (objectiveController != null)
                     {
                         string taskName = maskCollectionTaskPrefix + " " + pieceType;
-                        Debug.Log($"Completing objective task: {taskName}");
                         objectiveController.CompleteTask(taskName);
+                    }
+
+                    // UNLOCK ABILITY
+                    if (!string.IsNullOrEmpty(piece.abilityToUnlock) && bloodSystem != null)
+                    {
+                        bloodSystem.UnlockAbility(piece.abilityToUnlock);
+
+                        if (piece.showUnlockMessage)
+                        {
+                            Debug.Log($"🔓 Unlocked ability: {piece.abilityToUnlock} from collecting {pieceType}");
+                        }
+                    }
+
+                    // Play cutscene
+                    if (playCutsceneOnCollection && CutsceneCameraController.Instance != null)
+                    {
+                        PlayMaskCollectionCutscene(piece);
+                    }
+                    else
+                    {
+                        if (piece.voiceoverClip != null)
+                        {
+                            StartCoroutine(PlayVoiceoverDelayed(piece.voiceoverClip, voiceoverStartDelay));
+                        }
                     }
 
                     CheckIfMaskComplete();
                 }
-                else
-                {
-                    Debug.LogWarning($"Piece on character is null for {pieceType}!");
-                }
                 return;
             }
         }
+    }
 
-        Debug.LogWarning($"Could not find or already collected piece: {pieceType}");
+    private void PlayMaskCollectionCutscene(MaskPiece piece)
+    {
+        if (playerHeadTransform == null)
+        {
+            Debug.LogError("Cannot play cutscene - player head transform not assigned!");
+            return;
+        }
+
+        Debug.Log($"🎬 Playing mask collection cutscene for {piece.pieceName}");
+
+        // Start voiceover
+        if (piece.voiceoverClip != null)
+        {
+            StartCoroutine(PlayVoiceoverDelayed(piece.voiceoverClip, voiceoverStartDelay));
+        }
+
+        // Calculate camera position
+        Vector3 headPosition = playerHeadTransform.position;
+        Vector3 playerForward = transform.forward;
+        Vector3 playerRight = transform.right;
+        Vector3 worldUp = Vector3.up;
+
+        float horizontalRad = horizontalAngle * Mathf.Deg2Rad;
+        float verticalRad = verticalAngle * Mathf.Deg2Rad;
+
+        Vector3 horizontalDirection = (playerForward * Mathf.Cos(horizontalRad) + playerRight * Mathf.Sin(horizontalRad));
+        Vector3 direction = (horizontalDirection * Mathf.Cos(verticalRad) + worldUp * Mathf.Sin(verticalRad)).normalized;
+
+        Vector3 cameraPosition = headPosition + direction * cameraDistance;
+        Vector3 lookTarget = headPosition + lookAtOffset;
+        Quaternion cameraRotation = Quaternion.LookRotation(lookTarget - cameraPosition);
+
+        // Play cutscene
+        CutsceneCameraController.Instance.PlayCustomCutscene(
+            cameraPosition,
+            cameraRotation,
+            cutsceneDuration,
+            OnCutsceneComplete
+        );
+    }
+
+    private void OnCutsceneComplete()
+    {
+        Debug.Log("🎬 Mask collection cutscene completed!");
     }
 
     private IEnumerator PlayVoiceoverDelayed(AudioClip clip, float delay)
     {
-        Debug.Log($"Coroutine started. Waiting {delay} seconds...");
         yield return new WaitForSeconds(delay);
 
-        Debug.Log($"Delay complete. Playing voiceover now...");
-
-        if (voiceoverAudioSource == null)
+        if (voiceoverAudioSource != null && clip != null)
         {
-            Debug.LogError("❌ VoiceoverAudioSource is NULL!");
-            yield break;
+            voiceoverAudioSource.PlayOneShot(clip);
         }
-
-        if (clip == null)
-        {
-            Debug.LogError("❌ AudioClip is NULL!");
-            yield break;
-        }
-
-        Debug.Log($"🎤 Playing voiceover: {clip.name}");
-        Debug.Log($"   - Clip length: {clip.length}s");
-        Debug.Log($"   - Source volume: {voiceoverAudioSource.volume}");
-        Debug.Log($"   - Source enabled: {voiceoverAudioSource.enabled}");
-
-        voiceoverAudioSource.PlayOneShot(clip);
-
-        Debug.Log("✓ PlayOneShot called!");
     }
 
     private void CheckIfMaskComplete()
@@ -289,13 +350,8 @@ public class MaskController : MonoBehaviour
 
         if (allCollected)
         {
-            OnMaskComplete();
+            Debug.Log("🎭 Mask Complete! All pieces collected!");
         }
-    }
-
-    private void OnMaskComplete()
-    {
-        Debug.Log("🎭 Mask Complete! All pieces collected!");
     }
 
     public void ActivatePiece(string pieceType)
@@ -352,5 +408,52 @@ public class MaskController : MonoBehaviour
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, collectionRange);
+
+        if (playCutsceneOnCollection && playerHeadTransform != null)
+        {
+            Vector3 headPosition = playerHeadTransform.position;
+            Vector3 playerForward = transform.forward;
+            Vector3 playerRight = transform.right;
+            Vector3 worldUp = Vector3.up;
+
+            float horizontalRad = horizontalAngle * Mathf.Deg2Rad;
+            float verticalRad = verticalAngle * Mathf.Deg2Rad;
+
+            Vector3 horizontalDirection = (playerForward * Mathf.Cos(horizontalRad) + playerRight * Mathf.Sin(horizontalRad));
+            Vector3 direction = (horizontalDirection * Mathf.Cos(verticalRad) + worldUp * Mathf.Sin(verticalRad)).normalized;
+
+            Vector3 cameraPosition = headPosition + direction * cameraDistance;
+            Vector3 lookTarget = headPosition + lookAtOffset;
+
+            // Draw camera position
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(cameraPosition, 0.2f);
+
+            // Draw look target
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(lookTarget, 0.15f);
+
+            // Draw line from camera to target
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(cameraPosition, lookTarget);
+
+            // Draw orbit circle
+            Gizmos.color = Color.yellow;
+            int segments = 36;
+            Vector3 prevPoint = headPosition + playerForward * cameraDistance;
+            for (int i = 1; i <= segments; i++)
+            {
+                float angle = (i / (float)segments) * 360f * Mathf.Deg2Rad;
+                Vector3 circleOffset = (playerForward * Mathf.Cos(angle) + playerRight * Mathf.Sin(angle)) * cameraDistance;
+                Vector3 point = headPosition + circleOffset;
+                Gizmos.DrawLine(prevPoint, point);
+                prevPoint = point;
+            }
+
+#if UNITY_EDITOR
+            UnityEditor.Handles.Label(cameraPosition, $"Camera ({horizontalAngle}°, {verticalAngle}°)");
+            UnityEditor.Handles.Label(lookTarget, "Look Target");
+#endif
+        }
     }
 }

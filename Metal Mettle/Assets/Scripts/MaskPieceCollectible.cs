@@ -55,7 +55,7 @@ public class MaskPieceCollectible : MonoBehaviour
         bobTimer += Time.deltaTime * bobSpeed;
         Vector3 newPosition = startPosition;
         newPosition.y += Mathf.Sin(bobTimer) * bobHeight;
-        transform.position = newPosition;
+       // transform.position = newPosition;
     }
 
     private void MakeAccessible()

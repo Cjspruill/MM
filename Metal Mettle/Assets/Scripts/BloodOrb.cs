@@ -31,6 +31,20 @@ public class BloodOrb : MonoBehaviour
     public float surfaceStickiness = 0.3f;
     public bool enableDripTrail = true;
 
+    [Header("Blood Splatter Settings")]
+    [Tooltip("Spawn blood splatter decal when orb hits surfaces")]
+    public bool spawnSplatterOnImpact = true;
+    [Tooltip("Minimum velocity (magnitude) required to spawn a splatter")]
+    [Range(0.5f, 10f)]
+    public float minImpactVelocity = 2f;
+    [Tooltip("Which layers should spawn blood splatters when hit (e.g., Ground, Environment)")]
+    public LayerMask splatOnLayers;
+    [Tooltip("Scale the splatter size based on orb size")]
+    public bool scaleSplatterWithOrb = true;
+    [Tooltip("Multiplier for splatter size based on orb size")]
+    [Range(0.5f, 3f)]
+    public float splatterSizeMultiplier = 1.5f;
+
     [Header("Absorption")]
     public float absorptionRange = 3f;
     public float absorptionDuration = 0.5f;
@@ -77,6 +91,7 @@ public class BloodOrb : MonoBehaviour
     private Vector3 lastPosition;
     private float dripTimer = 0f;
     private MaterialPropertyBlock propBlock;
+    private bool hasSpawnedSplatter = false; // Prevent multiple splatters from one orb
 
     void Start()
     {
@@ -291,6 +306,53 @@ public class BloodOrb : MonoBehaviour
     {
         if (isAbsorbing) return;
 
+        // BLOOD SPLATTER LOGIC - Spawn splatter on impact
+        if (spawnSplatterOnImpact && !hasSpawnedSplatter)
+        {
+            // Don't spawn splatter when hitting player
+            if (collision.gameObject.CompareTag("Player"))
+            {
+                Debug.Log("Blood orb hit player - no splatter spawned");
+            }
+            else
+            {
+                // Check if this surface layer is in the splatOnLayers mask
+                int hitLayer = collision.gameObject.layer;
+                bool isValidLayer = (splatOnLayers.value & (1 << hitLayer)) != 0;
+
+                if (isValidLayer)
+                {
+                    // Check impact velocity
+                    float impactSpeed = collision.relativeVelocity.magnitude;
+
+                    if (impactSpeed >= minImpactVelocity)
+                    {
+                        // Get contact point and normal
+                        ContactPoint contact = collision.contacts[0];
+                        Vector3 hitPoint = contact.point;
+                        Vector3 hitNormal = contact.normal;
+
+                        // Spawn the splatter
+                        BloodSplatterManager.SpawnSplatter(hitPoint, hitNormal);
+
+                        // Mark that we've spawned a splatter (prevent multiple from same orb)
+                        hasSpawnedSplatter = true;
+
+                        Debug.Log($"Blood splatter spawned! Hit: {collision.gameObject.name}, Layer: {LayerMask.LayerToName(hitLayer)}, Velocity: {impactSpeed:F2}");
+                    }
+                    else
+                    {
+                        Debug.Log($"Impact too slow for splatter: {impactSpeed:F2} < {minImpactVelocity}");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"Layer '{LayerMask.LayerToName(hitLayer)}' not in splatOnLayers mask");
+                }
+            }
+        }
+
+        // EXISTING PHYSICS LOGIC
         if (rb != null && collision.relativeVelocity.magnitude > 2f)
         {
             rb.linearVelocity *= (1f - surfaceStickiness);
@@ -447,6 +509,50 @@ public class BloodOrb : MonoBehaviour
 }
 
 /*
+=== BLOOD SPLATTER SYSTEM INTEGRATION ===
+
+IMPORTANT: LAYER SETUP
+1. Set "splatOnLayers" in inspector to ONLY include ground/environment layers
+2. Do NOT include the Player layer
+3. Example setup:
+   - Include: "Default", "Ground", "Environment", "Terrain"
+   - Exclude: "Player", "Enemy", "UI"
+
+SPLATTER LOGIC:
+1. First checks if hit object is Player (by tag) → No splatter
+2. Then checks if layer is in splatOnLayers mask → Must match
+3. Then checks velocity threshold → Must be fast enough
+4. Only spawns ONE splatter per orb (hasSpawnedSplatter flag)
+
+NEW SPLATTER SETTINGS:
+- spawnSplatterOnImpact: Enable/disable blood splatters on collision
+- minImpactVelocity: How fast orb must be moving to create splatter (2.0 = default)
+- splatOnLayers: LayerMask - ONLY surfaces that should show splatters
+- scaleSplatterWithOrb: Scale splatter based on orb size (larger orbs = bigger splatters)
+- splatterSizeMultiplier: How much to scale the splatter (1.5x orb size default)
+
+HOW IT WORKS:
+1. Orb spawns and flies through air
+2. Orb hits something (OnCollisionEnter)
+3. IF it's the player → Skip splatter
+4. ELSE check if layer matches splatOnLayers
+5. Check if velocity is high enough (minImpactVelocity)
+6. Spawn blood splatter decal at impact point
+7. hasSpawnedSplatter prevents multiple splatters from one orb
+8. Orb continues physics (can bounce/roll and still be absorbed)
+
+DEBUGGING:
+- Console shows why splatters do/don't spawn:
+  * "Blood orb hit player - no splatter spawned"
+  * "Layer 'X' not in splatOnLayers mask"
+  * "Impact too slow for splatter: X < Y"
+  * "Blood splatter spawned! Hit: X, Layer: Y, Velocity: Z"
+
+REQUIRES:
+- BloodSplatterManager in scene
+- Blood decal material assigned to BloodSplatterManager
+- splatOnLayers configured correctly (NOT including Player layer)
+
 === ANIMATION FIX ===
 
 TWO MODES:

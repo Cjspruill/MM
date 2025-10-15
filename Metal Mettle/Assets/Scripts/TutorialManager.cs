@@ -2,6 +2,7 @@
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
+using UnityEngine.AI;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
@@ -63,7 +64,15 @@ public class TutorialManager : MonoBehaviour
     private InputAction executionAction;
 
     private Dictionary<Animator, bool> animatorStates = new Dictionary<Animator, bool>();
+    private Dictionary<NavMeshAgent, NavMeshAgentData> navMeshAgentStates = new Dictionary<NavMeshAgent, NavMeshAgentData>();
 
+    // Struct to store NavMeshAgent state
+    private struct NavMeshAgentData
+    {
+        public bool wasEnabled;
+        public bool wasStopped;
+        public Vector3 velocity;
+    }
 
     public bool IsShowingTutorial
     {
@@ -127,6 +136,7 @@ public class TutorialManager : MonoBehaviour
 
         LoadProgress();
     }
+
     void Update()
     {
         if (!tutorialEnabled) return;
@@ -290,8 +300,6 @@ public class TutorialManager : MonoBehaviour
         // Handle pausing
         if (step.pauseGame)
         {
-            // DON'T set Time.timeScale = 0 - it blocks input
-            // Just disable all game scripts instead
             PauseGame(true);
 
             if (showDebugLogs)
@@ -310,26 +318,48 @@ public class TutorialManager : MonoBehaviour
         // Find ALL animators
         Animator[] allAnimators = FindObjectsByType<Animator>(FindObjectsSortMode.None);
 
+        // Find ALL NavMeshAgents
+        NavMeshAgent[] allAgents = FindObjectsByType<NavMeshAgent>(FindObjectsSortMode.None);
+
         if (pause)
         {
-            // Store current states and disable
+            // Store current states and disable animators
             animatorStates.Clear();
-
             foreach (var animator in allAnimators)
             {
                 animatorStates[animator] = animator.enabled;
                 animator.enabled = false;
             }
 
+            // Store current states and stop NavMeshAgents
+            navMeshAgentStates.Clear();
+            foreach (var agent in allAgents)
+            {
+                if (agent != null && agent.enabled)
+                {
+                    NavMeshAgentData data = new NavMeshAgentData
+                    {
+                        wasEnabled = agent.enabled,
+                        wasStopped = agent.isStopped,
+                        velocity = agent.velocity
+                    };
+                    navMeshAgentStates[agent] = data;
+
+                    // Stop the agent (freezes position)
+                    agent.isStopped = true;
+                    agent.velocity = Vector3.zero;
+                }
+            }
+
             if (showDebugLogs)
-                Debug.Log($"Animators PAUSED: {allAnimators.Length} animators affected");
+                Debug.Log($"Game PAUSED: {allAnimators.Length} animators disabled, {navMeshAgentStates.Count} NavMeshAgents stopped");
         }
         else
         {
-            // Restore previous states
+            // Restore animator states
             foreach (var animator in allAnimators)
             {
-                if (animatorStates.ContainsKey(animator))
+                if (animatorStates.ContainsKey(animator) && animator != null)
                 {
                     // Check if this is a ragdoll (has rigidbody children that are not kinematic)
                     Rigidbody[] childRigidbodies = animator.GetComponentsInChildren<Rigidbody>();
@@ -355,11 +385,51 @@ public class TutorialManager : MonoBehaviour
                     }
                 }
             }
-
             animatorStates.Clear();
 
+            // Restore NavMeshAgent states
+            int resumedAgents = 0;
+            foreach (var kvp in navMeshAgentStates)
+            {
+                NavMeshAgent agent = kvp.Key;
+                NavMeshAgentData data = kvp.Value;
+
+                if (agent != null && agent.gameObject.activeInHierarchy)
+                {
+                    // Check if this enemy has been turned into a ragdoll
+                    Rigidbody[] childRigidbodies = agent.GetComponentsInChildren<Rigidbody>();
+                    bool isRagdoll = false;
+
+                    foreach (var rb in childRigidbodies)
+                    {
+                        if (!rb.isKinematic)
+                        {
+                            isRagdoll = true;
+                            break;
+                        }
+                    }
+
+                    // Only restore if not a ragdoll
+                    if (!isRagdoll)
+                    {
+                        // Resume movement
+                        agent.isStopped = data.wasStopped;
+
+                        // Note: We don't restore velocity directly as NavMeshAgent will recalculate
+                        // its path and velocity based on its current state
+
+                        resumedAgents++;
+                    }
+                    else if (showDebugLogs)
+                    {
+                        Debug.Log($"Skipping NavMeshAgent restore for ragdoll: {agent.gameObject.name}");
+                    }
+                }
+            }
+            navMeshAgentStates.Clear();
+
             if (showDebugLogs)
-                Debug.Log($"Animators UNPAUSED: {allAnimators.Length} animators checked, ragdolls skipped");
+                Debug.Log($"Game UNPAUSED: {allAnimators.Length} animators checked, {resumedAgents} NavMeshAgents resumed, ragdolls skipped");
         }
     }
 
@@ -393,7 +463,6 @@ public class TutorialManager : MonoBehaviour
 
         if (ui.canvasGroup != null)
         {
-            // Normal fade
             yield return StartCoroutine(FadeCanvasGroup(ui.canvasGroup, 0f, 1f, ui.fadeSpeed, false));
         }
 
@@ -402,7 +471,6 @@ public class TutorialManager : MonoBehaviour
             if (showDebugLogs)
                 Debug.Log($"Auto-dismissing after {step.displayDuration} seconds");
 
-            // Use normal WaitForSeconds
             yield return new WaitForSeconds(step.displayDuration);
 
             if (showDebugLogs)
@@ -444,7 +512,6 @@ public class TutorialManager : MonoBehaviour
 
         if (ui.canvasGroup != null)
         {
-            // Normal fade (no unscaled time needed since we're not using Time.timeScale)
             yield return StartCoroutine(FadeCanvasGroup(ui.canvasGroup, 1f, 0f, ui.fadeSpeed, false));
         }
 
@@ -466,7 +533,6 @@ public class TutorialManager : MonoBehaviour
         // Unpause and re-enable
         if (wasPaused)
         {
-            // Unpause everything (no Time.timeScale to restore)
             PauseGame(false);
 
             // Clear selected UI object
@@ -495,7 +561,6 @@ public class TutorialManager : MonoBehaviour
 
         while (elapsed < duration)
         {
-            // Use unscaled delta time if paused
             elapsed += useUnscaledTime ? Time.unscaledDeltaTime : Time.deltaTime;
             cg.alpha = Mathf.Lerp(from, to, elapsed / duration);
             yield return null;

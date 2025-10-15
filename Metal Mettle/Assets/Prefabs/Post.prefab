@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 8412956072575776580}
   - component: {fileID: 1770460955215950855}
   - component: {fileID: 3926331211294065395}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: Sphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -33988,7 +33988,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 327
+  m_VersionIndex: 333
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -34108,7 +34108,7 @@ GameObject:
   - component: {fileID: 259959721339135281}
   - component: {fileID: 3985469597654025945}
   - component: {fileID: 8102557005942672952}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: Post
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -38223,7 +38223,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 1770
+  m_VersionIndex: 1776
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
