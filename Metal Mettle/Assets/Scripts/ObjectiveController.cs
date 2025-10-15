@@ -99,7 +99,7 @@ public class ObjectiveController : MonoBehaviour
             {
                 task.isComplete = true;
                 task.onTaskComplete?.Invoke();
-                Debug.Log($"✓ Task completed: {taskName}");
+               // Debug.Log($"✓ Task completed: {taskName}");
 
                 onTaskCompleted?.Invoke(); // NEW: Notify UI of task completion
 

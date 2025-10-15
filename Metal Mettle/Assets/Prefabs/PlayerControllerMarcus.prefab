@@ -16629,7 +16629,7 @@ MonoBehaviour:
   m_PreserveMeshAssetOnDestroy: 0
   assetGuid: 
   m_Mesh: {fileID: 0}
-  m_VersionIndex: 5770
+  m_VersionIndex: 5776
   m_IsSelectable: 1
   m_SelectedFaces: 
   m_SelectedEdges: []
@@ -24462,8 +24462,8 @@ MonoBehaviour:
   taskListContainer: {fileID: 1291090442220170454}
   taskItemPrefab: {fileID: 8391165762867899160, guid: 522d11644f4da954c9290a1f33ac861b, type: 3}
   manualTaskTexts: []
-  completePrefix: "\u2713 "
-  incompletePrefix: "\u25CB "
+  completePrefix: X
+  incompletePrefix: O
   completeTitleColor: {r: 0.3, g: 1, b: 0.3, a: 1}
   incompleteTitleColor: {r: 1, g: 1, b: 1, a: 1}
   completeTaskColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
@@ -34498,8 +34498,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: -70.057}
+  m_SizeDelta: {x: 0, y: -140.11}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2641290200797638982
 MonoBehaviour:
