@@ -304,13 +304,11 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
 
     void OnDisable()
     {
-        if (lockCursorOnAttack)
-        {
-            controls.Player.Attack.performed -= OnAttackInput;
-        }
 
+        // Check if controls exists BEFORE trying to unsubscribe
         if (controls != null)
         {
+            controls.Player.Attack.performed -= OnAttackInput;
             controls.Disable();
             Debug.Log("PlayerController: Input controls disabled");
         }

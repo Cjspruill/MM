@@ -19,7 +19,7 @@ public class CutsceneCameraController : MonoBehaviour
 
     [Header("Player Control")]
     [SerializeField] private MonoBehaviour playerCameraScript; // Reference to your camera control script
-    [SerializeField] private MonoBehaviour playerMovementScript; // Optional: player movement script
+    [SerializeField] private PlayerController playerMovementScript; // Optional: player movement script
     [SerializeField] private bool disablePlayerInput = true; // Also disable PlayerInput component
     [SerializeField] private bool pauseTime = false; // Optionally pause time during cutscene
 

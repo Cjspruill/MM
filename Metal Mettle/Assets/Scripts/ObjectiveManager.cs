@@ -1,42 +1,50 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
 /// <summary>
-/// CENTRALIZED objective tracking - attach ONE component to ONE GameObject
-/// Automatically tracks: kills, hits, blood, triggers - NO per-enemy setup needed!
-/// IMPORTANT: Only ONE ObjectiveManager should be active at a time!
+/// Enhanced ObjectiveManager that can track multiple objectives
+/// Supports both combat objectives AND mask collection objectives seamlessly
 /// </summary>
 public class ObjectiveManager : MonoBehaviour
 {
     public static ObjectiveManager Instance { get; private set; }
 
+    [System.Serializable]
+    public class ObjectiveTracking
+    {
+        [Header("Objective Settings")]
+        public string objectiveName = "Objective 1";
+        public int objectiveIndex = 0;
+
+        [Header("Kill Tracking")]
+        public bool trackKills = true;
+        public int killsRequired = 10;
+        public string killTaskName = "Kill 10 Enemies";
+        [HideInInspector] public int currentKills = 0;
+        [HideInInspector] public bool killTaskComplete = false;
+
+        [Header("Hit Tracking")]
+        public bool trackHits = false;
+        public int hitsRequired = 10;
+        public string hitTaskName = "Land 10 Attacks";
+        [HideInInspector] public int currentHits = 0;
+        [HideInInspector] public bool hitTaskComplete = false;
+
+        [Header("Blood Tracking")]
+        public bool trackBloodGain = true;
+        public float bloodRequired = 10f;
+        public string bloodTaskName = "Gain 10 Blood";
+        [HideInInspector] public float startingBlood = 0f;
+        [HideInInspector] public bool bloodTaskComplete = false;
+    }
+
     [Header("References")]
     [SerializeField] private ObjectiveController objectiveController;
     [SerializeField] private BloodSystem bloodSystem;
 
-    [Header("Activation")]
-    [SerializeField] private bool startActive = true;
-    [Tooltip("Which objective index this manager is for (0 = first objective, 1 = second, etc.)")]
-    [SerializeField] private int targetObjectiveIndex = 0;
-
-    [Header("Kill Tracking")]
-    [SerializeField] private bool trackKills = true;
-    [SerializeField] private int killsRequired = 10;
-    [SerializeField] private string killTaskName = "Kill 10 Enemies";
-    private int currentKills = 0;
-
-    [Header("Hit Tracking (Any Enemy)")]
-    [SerializeField] private bool trackHits = true;
-    [SerializeField] private int hitsRequired = 10;
-    [SerializeField] private string hitTaskName = "Land 10 Attacks";
-    private int currentHits = 0;
-
-    [Header("Blood Tracking")]
-    [SerializeField] private bool trackBloodGain = true;
-    [SerializeField] private float bloodRequired = 10f;
-    [SerializeField] private string bloodTaskName = "Gain 10 Blood";
-    private float startingBlood = 0f;
+    [Header("Multi-Objective Tracking")]
+    [SerializeField] private List<ObjectiveTracking> objectives = new List<ObjectiveTracking>();
 
     [Header("Events")]
     public UnityEvent<int> onKillCountChanged;
@@ -46,17 +54,20 @@ public class ObjectiveManager : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool showDebugLogs = true;
 
-    private bool killTaskComplete = false;
-    private bool hitTaskComplete = false;
-    private bool bloodTaskComplete = false;
-    private bool isActive = false;
+    private ObjectiveTracking currentTracking;
+    private Dictionary<Health, System.Action> damageCallbacks = new Dictionary<Health, System.Action>();
+    private Dictionary<Health, System.Action> deathCallbacks = new Dictionary<Health, System.Action>();
 
     private void Awake()
     {
-        // Singleton - but allow multiple managers, just swap active one
         if (Instance == null)
         {
             Instance = this;
+        }
+        else
+        {
+            Debug.LogWarning($"Multiple ObjectiveManagers detected! Only one should be active at a time. Disabling {gameObject.name}");
+            enabled = false;
         }
     }
 
@@ -69,141 +80,104 @@ public class ObjectiveManager : MonoBehaviour
         if (bloodSystem == null)
             bloodSystem = FindFirstObjectByType<BloodSystem>();
 
-        // Record starting blood
-        if (bloodSystem != null)
-        {
-            startingBlood = bloodSystem.currentBlood;
-        }
-
-        // Check if this manager should be active based on current objective
-        CheckIfShouldBeActive();
-
         // Subscribe to objective changes
         if (objectiveController != null)
         {
             objectiveController.onObjectiveChanged.AddListener(OnObjectiveChanged);
         }
 
-        // DEBUG: Show what we're tracking
-        if (showDebugLogs)
-        {
-            Debug.Log($"=== ObjectiveManager '{gameObject.name}' Start ===");
-            Debug.Log($"Target Objective Index: {targetObjectiveIndex}");
-            Debug.Log($"Start Active: {startActive}");
-            Debug.Log($"Is Active: {isActive}");
-            Debug.Log($"Tracking Kills: {trackKills} - Task: '{killTaskName}'");
-            Debug.Log($"Tracking Hits: {trackHits} - Task: '{hitTaskName}'");
-            Debug.Log($"Tracking Blood: {trackBloodGain} - Task: '{bloodTaskName}'");
-        }
-
-        if (isActive)
-        {
-            ActivateTracking();
-        }
-    }
-
-    private void CheckIfShouldBeActive()
-    {
-        if (objectiveController == null)
-        {
-            isActive = startActive;
-            return;
-        }
-
-        var currentObj = objectiveController.GetCurrentObjective();
-        if (currentObj == null)
-        {
-            isActive = false;
-            return;
-        }
-
-        // Get current objective index
-        var allObjectives = objectiveController.GetAllObjectives();
-        int currentIndex = allObjectives.IndexOf(currentObj);
-
-        // Activate if we're on the right objective
-        isActive = (currentIndex == targetObjectiveIndex);
+        // Initialize first objective
+        OnObjectiveChanged();
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Current objective index is {currentIndex}, target is {targetObjectiveIndex}. Active: {isActive}");
+            Debug.Log($"=== ObjectiveManager Start ===");
+            Debug.Log($"Configured {objectives.Count} objective trackings");
         }
     }
 
     private void OnObjectiveChanged()
     {
-        // When objective changes, check if we should activate/deactivate
-        bool wasActive = isActive;
-        CheckIfShouldBeActive();
+        if (objectiveController == null) return;
 
-        // If we just became active, register everything
-        if (isActive && !wasActive)
+        var currentObj = objectiveController.GetCurrentObjective();
+        if (currentObj == null) return;
+
+        // Get current objective index
+        var allObjectives = objectiveController.GetAllObjectives();
+        int currentIndex = allObjectives.IndexOf(currentObj);
+
+        if (showDebugLogs)
         {
-            if (showDebugLogs)
+            Debug.Log($"=== Objective Changed to Index {currentIndex} ===");
+        }
+
+        // Find matching tracking configuration
+        ObjectiveTracking newTracking = null;
+        foreach (var tracking in objectives)
+        {
+            if (tracking.objectiveIndex == currentIndex)
             {
-                Debug.Log($"ObjectiveManager '{gameObject.name}' ACTIVATED for objective {targetObjectiveIndex}");
+                newTracking = tracking;
+                break;
+            }
+        }
+
+        // If we found a matching tracking configuration
+        if (newTracking != null)
+        {
+            // Deactivate old tracking
+            if (currentTracking != null)
+            {
+                UnregisterAllEnemies();
             }
 
-            // Reset tracking for new objective
-            ResetTracking();
+            // Activate new tracking
+            currentTracking = newTracking;
 
-            // Re-register all enemies (they might have been spawned while we were inactive)
+            // Record starting blood for this objective
+            if (bloodSystem != null)
+            {
+                currentTracking.startingBlood = bloodSystem.currentBlood;
+            }
+
+            // Register all existing enemies
             RegisterAllExistingEnemies();
 
-            // Set as active instance
-            Instance = this;
-        }
-        else if (!isActive && wasActive)
-        {
             if (showDebugLogs)
             {
-                Debug.Log($"ObjectiveManager '{gameObject.name}' DEACTIVATED");
+                Debug.Log($"✓ Activated tracking for: {currentTracking.objectiveName}");
+                Debug.Log($"  - Kills: {currentTracking.trackKills} ({currentTracking.killsRequired} required)");
+                Debug.Log($"  - Hits: {currentTracking.trackHits} ({currentTracking.hitsRequired} required)");
+                Debug.Log($"  - Blood: {currentTracking.trackBloodGain} ({currentTracking.bloodRequired} required)");
             }
-            DeactivateTracking();
         }
-    }
-
-    private void ActivateTracking()
-    {
-        // Set as active instance
-        Instance = this;
-
-        // Register all existing enemies
-        RegisterAllExistingEnemies();
-
-        if (showDebugLogs)
+        else
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}' tracking activated!");
-        }
-    }
+            // This objective doesn't need tracking (e.g., mask collection only)
+            if (currentTracking != null)
+            {
+                UnregisterAllEnemies();
+                currentTracking = null;
+            }
 
-    private void DeactivateTracking()
-    {
-        // Unregister all enemies before deactivating
-        UnregisterAllEnemies();
-
-        // Clear instance if we were it
-        if (Instance == this)
-        {
-            Instance = null;
-        }
-
-        if (showDebugLogs)
-        {
-            Debug.Log($"ObjectiveManager '{gameObject.name}' tracking deactivated!");
+            if (showDebugLogs)
+            {
+                Debug.Log($"No tracking needed for objective index {currentIndex}");
+            }
         }
     }
 
     private void Update()
     {
-        if (!isActive) return; // Don't track if not active!
+        if (currentTracking == null) return;
 
         // Check blood threshold
-        if (trackBloodGain && !bloodTaskComplete && bloodSystem != null)
+        if (currentTracking.trackBloodGain && !currentTracking.bloodTaskComplete && bloodSystem != null)
         {
-            float bloodGained = bloodSystem.currentBlood - startingBlood;
+            float bloodGained = bloodSystem.currentBlood - currentTracking.startingBlood;
 
-            if (bloodGained >= bloodRequired)
+            if (bloodGained >= currentTracking.bloodRequired)
             {
                 CompleteBloodTask();
             }
@@ -212,23 +186,15 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
-    // Store references to registered enemies and their callbacks
-    private Dictionary<Health, System.Action> damageCallbacks = new Dictionary<Health, System.Action>();
-    private Dictionary<Health, System.Action> deathCallbacks = new Dictionary<Health, System.Action>();
-
-    /// <summary>
-    /// Automatically finds and subscribes to all enemies with Health component
-    /// </summary>
     private void RegisterAllExistingEnemies()
     {
-        if (!isActive) return;
+        if (currentTracking == null) return;
 
         Health[] allEnemies = FindObjectsByType<Health>(FindObjectsSortMode.None);
-
         int registeredCount = 0;
+
         foreach (Health enemy in allEnemies)
         {
-            // Only register if tagged as Enemy and is not the player
             if (enemy != null && enemy.CompareTag("Enemy"))
             {
                 RegisterEnemy(enemy);
@@ -238,49 +204,28 @@ public class ObjectiveManager : MonoBehaviour
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Registered {registeredCount} existing enemies");
+            Debug.Log($"Registered {registeredCount} existing enemies for {currentTracking.objectiveName}");
         }
     }
 
-    /// <summary>
-    /// Call this when spawning new enemies - auto-subscribes them to tracking
-    /// Only the ACTIVE manager will register them!
-    /// </summary>
     public void RegisterEnemy(Health enemy)
     {
-        if (enemy == null) return;
-
-        // IMPORTANT: Check if this manager is active OR if it's the Instance
-        bool shouldRegister = isActive || (Instance == this);
-
-        if (!shouldRegister)
-        {
-            if (showDebugLogs)
-            {
-                Debug.Log($"ObjectiveManager '{gameObject.name}': Skipping registration (not active). Enemy: {enemy.gameObject.name}");
-            }
-            return;
-        }
+        if (enemy == null || currentTracking == null) return;
 
         // Don't register twice
         if (damageCallbacks.ContainsKey(enemy) || deathCallbacks.ContainsKey(enemy))
-        {
-            if (showDebugLogs)
-            {
-                Debug.Log($"ObjectiveManager '{gameObject.name}': Enemy {enemy.gameObject.name} already registered, skipping");
-            }
             return;
-        }
 
-        // Create and store the callback references so we can unsubscribe later
-        if (trackHits)
+        // Register hit tracking
+        if (currentTracking.trackHits)
         {
             System.Action damageCallback = () => OnEnemyHit(enemy);
             damageCallbacks[enemy] = damageCallback;
             enemy.onDamage.AddListener(new UnityEngine.Events.UnityAction(damageCallback));
         }
 
-        if (trackKills)
+        // Register kill tracking
+        if (currentTracking.trackKills)
         {
             System.Action deathCallback = () => OnEnemyKilled(enemy);
             deathCallbacks[enemy] = deathCallback;
@@ -289,7 +234,7 @@ public class ObjectiveManager : MonoBehaviour
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Successfully registered enemy {enemy.gameObject.name}. Total: {damageCallbacks.Count}");
+            Debug.Log($"Registered enemy: {enemy.gameObject.name}");
         }
     }
 
@@ -314,28 +259,21 @@ public class ObjectiveManager : MonoBehaviour
             }
         }
         deathCallbacks.Clear();
-
-        if (showDebugLogs)
-        {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Unregistered all enemies");
-        }
     }
 
     private void OnEnemyHit(Health enemy)
     {
-        if (!isActive) return; // Don't count if not active!
-        if (hitTaskComplete) return;
+        if (currentTracking == null || currentTracking.hitTaskComplete) return;
 
-        currentHits++;
+        currentTracking.currentHits++;
+        onHitCountChanged?.Invoke(currentTracking.currentHits);
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Hit count {currentHits}/{hitsRequired}");
+            Debug.Log($"Hit count: {currentTracking.currentHits}/{currentTracking.hitsRequired}");
         }
 
-        onHitCountChanged?.Invoke(currentHits);
-
-        if (currentHits >= hitsRequired)
+        if (currentTracking.currentHits >= currentTracking.hitsRequired)
         {
             CompleteHitTask();
         }
@@ -343,19 +281,17 @@ public class ObjectiveManager : MonoBehaviour
 
     private void OnEnemyKilled(Health enemy)
     {
-        if (!isActive) return; // Don't count if not active!
-        if (killTaskComplete) return;
+        if (currentTracking == null || currentTracking.killTaskComplete) return;
 
-        currentKills++;
+        currentTracking.currentKills++;
+        onKillCountChanged?.Invoke(currentTracking.currentKills);
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Kill count {currentKills}/{killsRequired}");
+            Debug.Log($"Kill count: {currentTracking.currentKills}/{currentTracking.killsRequired}");
         }
 
-        onKillCountChanged?.Invoke(currentKills);
-
-        if (currentKills >= killsRequired)
+        if (currentTracking.currentKills >= currentTracking.killsRequired)
         {
             CompleteKillTask();
         }
@@ -363,115 +299,79 @@ public class ObjectiveManager : MonoBehaviour
 
     private void CompleteHitTask()
     {
-        if (hitTaskComplete) return;
-        hitTaskComplete = true;
+        if (currentTracking.hitTaskComplete) return;
+        currentTracking.hitTaskComplete = true;
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Hit objective complete! Attempting to complete task: '{hitTaskName}'");
+            Debug.Log($"✓ Hit objective complete: {currentTracking.hitTaskName}");
         }
 
         if (objectiveController != null)
         {
-            objectiveController.CompleteTask(hitTaskName);
-        }
-        else
-        {
-            Debug.LogError("ObjectiveManager: ObjectiveController is null!");
+            objectiveController.CompleteTask(currentTracking.hitTaskName);
         }
     }
 
     private void CompleteKillTask()
     {
-        if (killTaskComplete) return;
-        killTaskComplete = true;
+        if (currentTracking.killTaskComplete) return;
+        currentTracking.killTaskComplete = true;
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Kill objective complete! Attempting to complete task: '{killTaskName}'");
+            Debug.Log($"✓ Kill objective complete: {currentTracking.killTaskName}");
         }
 
         if (objectiveController != null)
         {
-            objectiveController.CompleteTask(killTaskName);
-        }
-        else
-        {
-            Debug.LogError("ObjectiveManager: ObjectiveController is null!");
+            objectiveController.CompleteTask(currentTracking.killTaskName);
         }
     }
 
     private void CompleteBloodTask()
     {
-        if (bloodTaskComplete) return;
-        bloodTaskComplete = true;
+        if (currentTracking.bloodTaskComplete) return;
+        currentTracking.bloodTaskComplete = true;
 
         if (showDebugLogs)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Blood objective complete! Attempting to complete task: '{bloodTaskName}'");
+            Debug.Log($"✓ Blood objective complete: {currentTracking.bloodTaskName}");
         }
 
         if (objectiveController != null)
         {
-            objectiveController.CompleteTask(bloodTaskName);
-        }
-        else
-        {
-            Debug.LogError("ObjectiveManager: ObjectiveController is null!");
+            objectiveController.CompleteTask(currentTracking.bloodTaskName);
         }
     }
 
     // Public getters for UI
-    public int GetKillCount() => currentKills;
-    public int GetKillsRequired() => killsRequired;
-    public float GetKillProgress() => (float)currentKills / killsRequired;
+    public int GetKillCount() => currentTracking?.currentKills ?? 0;
+    public int GetKillsRequired() => currentTracking?.killsRequired ?? 0;
+    public float GetKillProgress() => currentTracking != null ? (float)currentTracking.currentKills / currentTracking.killsRequired : 0f;
 
-    public int GetHitCount() => currentHits;
-    public int GetHitsRequired() => hitsRequired;
-    public float GetHitProgress() => (float)currentHits / hitsRequired;
+    public int GetHitCount() => currentTracking?.currentHits ?? 0;
+    public int GetHitsRequired() => currentTracking?.hitsRequired ?? 0;
+    public float GetHitProgress() => currentTracking != null ? (float)currentTracking.currentHits / currentTracking.hitsRequired : 0f;
 
-    public float GetBloodGained() => bloodSystem != null ? bloodSystem.currentBlood - startingBlood : 0f;
-    public float GetBloodRequired() => bloodRequired;
-    public float GetBloodProgress() => GetBloodGained() / bloodRequired;
+    public float GetBloodGained() => currentTracking != null && bloodSystem != null ? bloodSystem.currentBlood - currentTracking.startingBlood : 0f;
+    public float GetBloodRequired() => currentTracking?.bloodRequired ?? 0f;
+    public float GetBloodProgress() => currentTracking != null ? GetBloodGained() / currentTracking.bloodRequired : 0f;
 
-    /// <summary>
-    /// Manually activate this manager (if you want manual control)
-    /// </summary>
-    public void Activate()
+    public void ResetAllTracking()
     {
-        isActive = true;
-        Instance = this;
-        ActivateTracking();
-    }
-
-    /// <summary>
-    /// Manually deactivate this manager
-    /// </summary>
-    public void Deactivate()
-    {
-        isActive = false;
-        DeactivateTracking();
-    }
-
-    /// <summary>
-    /// Reset all tracking (for respawn or level restart)
-    /// </summary>
-    public void ResetTracking()
-    {
-        currentKills = 0;
-        currentHits = 0;
-        killTaskComplete = false;
-        hitTaskComplete = false;
-        bloodTaskComplete = false;
-
-        if (bloodSystem != null)
+        foreach (var tracking in objectives)
         {
-            startingBlood = bloodSystem.currentBlood;
+            tracking.currentKills = 0;
+            tracking.currentHits = 0;
+            tracking.killTaskComplete = false;
+            tracking.hitTaskComplete = false;
+            tracking.bloodTaskComplete = false;
         }
 
-        if (showDebugLogs)
+        if (bloodSystem != null && currentTracking != null)
         {
-            Debug.Log($"ObjectiveManager '{gameObject.name}': Tracking reset");
+            currentTracking.startingBlood = bloodSystem.currentBlood;
         }
     }
 
@@ -481,6 +381,8 @@ public class ObjectiveManager : MonoBehaviour
         {
             objectiveController.onObjectiveChanged.RemoveListener(OnObjectiveChanged);
         }
+
+        UnregisterAllEnemies();
 
         if (Instance == this)
         {

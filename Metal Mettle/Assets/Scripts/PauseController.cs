@@ -1,25 +1,26 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
+using System.Collections;
 
 public class PauseController : MonoBehaviour
 {
-    // Singleton instance
     public static PauseController Instance { get; private set; }
 
     [Header("UI References")]
     [SerializeField] private GameObject pausePanel;
+    [SerializeField] private Toggle inputVerticalToggle;
 
     [Header("Scene Settings")]
     [SerializeField] private string mainMenuSceneName = "MainMenu";
 
-    InputSystem_Actions controls;
+    private InputSystem_Actions controls;
     private InputAction pauseAction;
     private bool isPaused = false;
 
     private void Awake()
     {
-        // Singleton pattern - destroy duplicate instances in same scene
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -27,13 +28,30 @@ public class PauseController : MonoBehaviour
         }
         Instance = this;
 
-        // Note: NOT using DontDestroyOnLoad - instance is scene-specific
         controls = new InputSystem_Actions();
         pauseAction = controls.Player.Pause;
 
         if (pausePanel != null)
-        {
             pausePanel.SetActive(false);
+    }
+
+    private void Start()
+    {
+        StartCoroutine(WaitForInputManager());
+    }
+
+    private IEnumerator WaitForInputManager()
+    {
+        // Wait until InputManager is ready
+        yield return new WaitUntil(() => InputManager.Instance != null);
+
+        // Add listener FIRST
+        if (inputVerticalToggle != null)
+        {
+            inputVerticalToggle.onValueChanged.AddListener(OnVerticalToggleChanged);
+
+            // Then sync the toggle state without triggering the listener
+            inputVerticalToggle.SetIsOnWithoutNotify(InputManager.Instance.invertVertical);
         }
     }
 
@@ -53,15 +71,15 @@ public class PauseController : MonoBehaviour
             pauseAction.performed -= OnPausePerformed;
             pauseAction.Disable();
         }
+
+        if (inputVerticalToggle != null)
+            inputVerticalToggle.onValueChanged.RemoveListener(OnVerticalToggleChanged);
     }
 
     private void OnDestroy()
     {
-        // Clear instance reference when destroyed
         if (Instance == this)
-        {
             Instance = null;
-        }
     }
 
     private void OnPausePerformed(InputAction.CallbackContext context)
@@ -72,25 +90,18 @@ public class PauseController : MonoBehaviour
     public void TogglePause()
     {
         if (isPaused)
-        {
             Resume();
-        }
         else
-        {
             Pause();
-        }
     }
 
     public void Pause()
     {
         if (pausePanel != null)
-        {
             pausePanel.SetActive(true);
-        }
 
         Time.timeScale = 0f;
         isPaused = true;
-
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
     }
@@ -98,13 +109,10 @@ public class PauseController : MonoBehaviour
     public void Resume()
     {
         if (pausePanel != null)
-        {
             pausePanel.SetActive(false);
-        }
 
         Time.timeScale = 1f;
         isPaused = false;
-
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
     }
@@ -112,9 +120,7 @@ public class PauseController : MonoBehaviour
     public void RestartLevel()
     {
         Time.timeScale = 1f;
-
-        Scene currentScene = SceneManager.GetActiveScene();
-        SceneManager.LoadScene(currentScene.name);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     public void ReturnToMainMenu()
@@ -132,8 +138,14 @@ public class PauseController : MonoBehaviour
 #endif
     }
 
-    public bool IsPaused()
+    public bool IsPaused() => isPaused;
+
+    private void OnVerticalToggleChanged(bool value)
     {
-        return isPaused;
+        if (InputManager.Instance != null)
+        {
+            InputManager.Instance.SetInvertVertical(value);
+            Debug.Log($"Vertical inversion set to: {value}"); // Debug log
+        }
     }
 }

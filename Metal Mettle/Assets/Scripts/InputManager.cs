@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using static UnityEngine.Rendering.DebugUI;
 
 public class InputManager : MonoBehaviour
 {
@@ -28,8 +29,17 @@ public class InputManager : MonoBehaviour
         invertHorizontal = PlayerPrefs.GetInt(PrefInvertH, 0) == 1; // default false
         invertVertical = PlayerPrefs.GetInt(PrefInvertV, 0) == 1;   // default false
 
+        
+
         Controls = new InputSystem_Actions();
         Controls.Enable();
+    }
+
+    public void ToggleInvertVertical()
+    {
+        invertVertical = !invertVertical;
+        PlayerPrefs.SetInt(PrefInvertV, invertVertical ? 1 : 0);
+        PlayerPrefs.Save();
     }
 
     public void SetInvertHorizontal(bool value)
