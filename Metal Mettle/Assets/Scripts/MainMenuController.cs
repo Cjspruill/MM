@@ -20,7 +20,24 @@ public class MainMenuController : MonoBehaviour
 
     [Header("How To Play Pages")]
     [SerializeField] private GameObject[] howToPlayPages;
+    [SerializeField] private PageTransitionType transitionType = PageTransitionType.SlideRight;
+    [SerializeField] private float pageTransitionDuration = 0.5f;
+    [SerializeField] private AnimationCurve pageTransitionCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
+    [SerializeField] private float slideDistance = 1000f; // For slide transitions
+
     private int currentPageIndex = 0;
+    private bool isTransitioning = false;
+
+    public enum PageTransitionType
+    {
+        Fade,
+        SlideLeft,
+        SlideRight,
+        SlideUp,
+        SlideDown,
+        Scale,
+        Flip
+    }
 
     private List<int> availableIndices = new List<int>();
     private int currentIndex = -1;
@@ -41,7 +58,6 @@ public class MainMenuController : MonoBehaviour
 
     private void OnValidate()
     {
-        // Auto-assign main camera if not set
         if (menuCamera == null)
         {
             menuCamera = Camera.main;
@@ -77,20 +93,16 @@ public class MainMenuController : MonoBehaviour
 
     private IEnumerator CameraMovementRoutine()
     {
-        // Initialize available indices
         RefillAvailableIndices();
 
         while (true)
         {
-            // Get next position
             int nextIndex = GetNextIndex();
             Transform targetTransform = cameraPositions[nextIndex];
 
-            // Store starting position and rotation
             Vector3 startPos = menuCamera.transform.position;
             Quaternion startRot = menuCamera.transform.rotation;
 
-            // Move to target position
             float elapsed = 0f;
             while (elapsed < transitionDuration)
             {
@@ -103,11 +115,9 @@ public class MainMenuController : MonoBehaviour
                 yield return null;
             }
 
-            // Ensure we're exactly at target
             menuCamera.transform.position = targetTransform.position;
             menuCamera.transform.rotation = targetTransform.rotation;
 
-            // Wait at this position
             yield return new WaitForSeconds(waitDuration);
         }
     }
@@ -116,13 +126,11 @@ public class MainMenuController : MonoBehaviour
     {
         if (randomOrder)
         {
-            // Refill if empty
             if (availableIndices.Count == 0)
             {
                 RefillAvailableIndices();
             }
 
-            // Pick random from available
             int randomArrayIndex = Random.Range(0, availableIndices.Count);
             int selectedIndex = availableIndices[randomArrayIndex];
             availableIndices.RemoveAt(randomArrayIndex);
@@ -132,7 +140,6 @@ public class MainMenuController : MonoBehaviour
         }
         else
         {
-            // Sequential order
             currentIndex = (currentIndex + 1) % cameraPositions.Length;
             return currentIndex;
         }
@@ -144,7 +151,6 @@ public class MainMenuController : MonoBehaviour
 
         for (int i = 0; i < cameraPositions.Length; i++)
         {
-            // Don't add current index to prevent immediate repeat
             if (i != currentIndex || cameraPositions.Length == 1)
             {
                 availableIndices.Add(i);
@@ -152,7 +158,6 @@ public class MainMenuController : MonoBehaviour
         }
     }
 
-    // Public methods for manual control
     public void SetTransitionDuration(float duration)
     {
         transitionDuration = Mathf.Max(0.1f, duration);
@@ -200,62 +205,212 @@ public class MainMenuController : MonoBehaviour
         currentIndex = index;
     }
 
-    // How To Play page management
+    // ===== PAGE TRANSITION METHODS =====
+
     public void NextPage()
     {
-        if (howToPlayPages == null || howToPlayPages.Length == 0) return;
+        if (isTransitioning || howToPlayPages == null || howToPlayPages.Length == 0) return;
 
-        // Deactivate current page
-        if (currentPageIndex >= 0 && currentPageIndex < howToPlayPages.Length)
-        {
-            howToPlayPages[currentPageIndex].SetActive(false);
-        }
-
-        // Move to next page (loop at end)
-        currentPageIndex = (currentPageIndex + 1) % howToPlayPages.Length;
-
-        // Activate new page
-        howToPlayPages[currentPageIndex].SetActive(true);
+        int nextIndex = (currentPageIndex + 1) % howToPlayPages.Length;
+        StartCoroutine(TransitionToPage(nextIndex, true));
     }
 
     public void PreviousPage()
     {
-        if (howToPlayPages == null || howToPlayPages.Length == 0) return;
+        if (isTransitioning || howToPlayPages == null || howToPlayPages.Length == 0) return;
 
-        // Deactivate current page
-        if (currentPageIndex >= 0 && currentPageIndex < howToPlayPages.Length)
-        {
-            howToPlayPages[currentPageIndex].SetActive(false);
-        }
+        int prevIndex = currentPageIndex - 1;
+        if (prevIndex < 0) prevIndex = howToPlayPages.Length - 1;
 
-        // Move to previous page (loop at beginning)
-        currentPageIndex--;
-        if (currentPageIndex < 0)
-        {
-            currentPageIndex = howToPlayPages.Length - 1;
-        }
-
-        // Activate new page
-        howToPlayPages[currentPageIndex].SetActive(true);
+        StartCoroutine(TransitionToPage(prevIndex, false));
     }
 
     public void SetPage(int index)
     {
-        if (howToPlayPages == null || howToPlayPages.Length == 0) return;
+        if (isTransitioning || howToPlayPages == null || howToPlayPages.Length == 0) return;
         if (index < 0 || index >= howToPlayPages.Length) return;
 
-        // Deactivate current page
-        if (currentPageIndex >= 0 && currentPageIndex < howToPlayPages.Length)
-        {
-            howToPlayPages[currentPageIndex].SetActive(false);
-        }
-
-        // Set and activate new page
-        currentPageIndex = index;
-        howToPlayPages[currentPageIndex].SetActive(true);
+        bool forward = index > currentPageIndex;
+        StartCoroutine(TransitionToPage(index, forward));
     }
 
-    // Quit application
+    private IEnumerator TransitionToPage(int newIndex, bool forward)
+    {
+        isTransitioning = true;
+
+        GameObject currentPage = howToPlayPages[currentPageIndex];
+        GameObject nextPage = howToPlayPages[newIndex];
+
+        // Ensure we have RectTransforms and CanvasGroups
+        RectTransform currentRect = currentPage.GetComponent<RectTransform>();
+        RectTransform nextRect = nextPage.GetComponent<RectTransform>();
+
+        CanvasGroup currentGroup = GetOrAddCanvasGroup(currentPage);
+        CanvasGroup nextGroup = GetOrAddCanvasGroup(nextPage);
+
+        // Activate next page
+        nextPage.SetActive(true);
+
+        // Store original positions
+        Vector2 currentOriginalPos = currentRect.anchoredPosition;
+        Vector2 nextOriginalPos = nextRect.anchoredPosition;
+        Vector3 currentOriginalScale = currentRect.localScale;
+        Vector3 nextOriginalScale = nextRect.localScale;
+
+        // Setup starting states based on transition type
+        SetupTransitionStart(nextRect, nextGroup, forward);
+
+        float elapsed = 0f;
+        while (elapsed < pageTransitionDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = pageTransitionCurve.Evaluate(elapsed / pageTransitionDuration);
+
+            UpdateTransition(currentRect, currentGroup, nextRect, nextGroup, t, forward,
+                           currentOriginalPos, nextOriginalPos, currentOriginalScale, nextOriginalScale);
+
+            yield return null;
+        }
+
+        // Ensure final states
+        currentRect.anchoredPosition = currentOriginalPos;
+        currentRect.localScale = currentOriginalScale;
+        currentGroup.alpha = 1f;
+        currentPage.SetActive(false);
+
+        nextRect.anchoredPosition = nextOriginalPos;
+        nextRect.localScale = nextOriginalScale;
+        nextGroup.alpha = 1f;
+
+        currentPageIndex = newIndex;
+        isTransitioning = false;
+    }
+
+    private void SetupTransitionStart(RectTransform rect, CanvasGroup group, bool forward)
+    {
+        switch (transitionType)
+        {
+            case PageTransitionType.Fade:
+                group.alpha = 0f;
+                break;
+
+            case PageTransitionType.SlideLeft:
+                rect.anchoredPosition = new Vector2(forward ? slideDistance : -slideDistance, rect.anchoredPosition.y);
+                break;
+
+            case PageTransitionType.SlideRight:
+                rect.anchoredPosition = new Vector2(forward ? -slideDistance : slideDistance, rect.anchoredPosition.y);
+                break;
+
+            case PageTransitionType.SlideUp:
+                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, forward ? -slideDistance : slideDistance);
+                break;
+
+            case PageTransitionType.SlideDown:
+                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, forward ? slideDistance : -slideDistance);
+                break;
+
+            case PageTransitionType.Scale:
+                rect.localScale = Vector3.zero;
+                group.alpha = 0f;
+                break;
+
+            case PageTransitionType.Flip:
+                rect.localScale = new Vector3(0f, 1f, 1f);
+                group.alpha = 0f;
+                break;
+        }
+    }
+
+    private void UpdateTransition(RectTransform currentRect, CanvasGroup currentGroup,
+                                  RectTransform nextRect, CanvasGroup nextGroup,
+                                  float t, bool forward,
+                                  Vector2 currentOriginalPos, Vector2 nextOriginalPos,
+                                  Vector3 currentOriginalScale, Vector3 nextOriginalScale)
+    {
+        switch (transitionType)
+        {
+            case PageTransitionType.Fade:
+                currentGroup.alpha = 1f - t;
+                nextGroup.alpha = t;
+                break;
+
+            case PageTransitionType.SlideLeft:
+                currentRect.anchoredPosition = Vector2.Lerp(
+                    currentOriginalPos,
+                    new Vector2(forward ? -slideDistance : slideDistance, currentOriginalPos.y),
+                    t);
+                nextRect.anchoredPosition = Vector2.Lerp(
+                    new Vector2(forward ? slideDistance : -slideDistance, nextOriginalPos.y),
+                    nextOriginalPos,
+                    t);
+                break;
+
+            case PageTransitionType.SlideRight:
+                currentRect.anchoredPosition = Vector2.Lerp(
+                    currentOriginalPos,
+                    new Vector2(forward ? slideDistance : -slideDistance, currentOriginalPos.y),
+                    t);
+                nextRect.anchoredPosition = Vector2.Lerp(
+                    new Vector2(forward ? -slideDistance : slideDistance, nextOriginalPos.y),
+                    nextOriginalPos,
+                    t);
+                break;
+
+            case PageTransitionType.SlideUp:
+                currentRect.anchoredPosition = Vector2.Lerp(
+                    currentOriginalPos,
+                    new Vector2(currentOriginalPos.x, forward ? slideDistance : -slideDistance),
+                    t);
+                nextRect.anchoredPosition = Vector2.Lerp(
+                    new Vector2(nextOriginalPos.x, forward ? -slideDistance : slideDistance),
+                    nextOriginalPos,
+                    t);
+                break;
+
+            case PageTransitionType.SlideDown:
+                currentRect.anchoredPosition = Vector2.Lerp(
+                    currentOriginalPos,
+                    new Vector2(currentOriginalPos.x, forward ? -slideDistance : slideDistance),
+                    t);
+                nextRect.anchoredPosition = Vector2.Lerp(
+                    new Vector2(nextOriginalPos.x, forward ? slideDistance : -slideDistance),
+                    nextOriginalPos,
+                    t);
+                break;
+
+            case PageTransitionType.Scale:
+                currentRect.localScale = Vector3.Lerp(currentOriginalScale, Vector3.zero, t);
+                currentGroup.alpha = 1f - t;
+
+                nextRect.localScale = Vector3.Lerp(Vector3.zero, nextOriginalScale, t);
+                nextGroup.alpha = t;
+                break;
+
+            case PageTransitionType.Flip:
+                // Current page flips out
+                float currentScaleX = Mathf.Lerp(1f, 0f, t);
+                currentRect.localScale = new Vector3(currentScaleX, 1f, 1f);
+                currentGroup.alpha = currentScaleX;
+
+                // Next page flips in
+                float nextScaleX = Mathf.Lerp(0f, 1f, t);
+                nextRect.localScale = new Vector3(nextScaleX, 1f, 1f);
+                nextGroup.alpha = nextScaleX;
+                break;
+        }
+    }
+
+    private CanvasGroup GetOrAddCanvasGroup(GameObject obj)
+    {
+        CanvasGroup group = obj.GetComponent<CanvasGroup>();
+        if (group == null)
+        {
+            group = obj.AddComponent<CanvasGroup>();
+        }
+        return group;
+    }
+
     public void QuitGame()
     {
 #if UNITY_EDITOR

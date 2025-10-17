@@ -11,6 +11,7 @@ public class EnemyAI : MonoBehaviour
 
     [Header("Movement Settings")]
     public float chaseSpeed = 3.5f;
+    public float wanderSpeed = 2f;
     public float stoppingDistance = 2f;
 
     [Header("Vision Detection")]
@@ -21,6 +22,12 @@ public class EnemyAI : MonoBehaviour
     public bool alwaysChase = false;
     public float memoryDuration = 3f;
     public float visionCheckInterval = 0.2f;
+
+    [Header("Wandering Settings")]
+    public float wanderRadius = 10f;
+    public float minWanderWaitTime = 2f;
+    public float maxWanderWaitTime = 5f;
+    public float wanderPointReachThreshold = 1f;
 
     [Header("Alert System")]
     public float alertRadius = 5f;
@@ -55,6 +62,8 @@ public class EnemyAI : MonoBehaviour
     public bool showDebug = true;
 
     // State tracking
+    private enum EnemyState { Wandering, Chasing, Attacking }
+    private EnemyState currentState = EnemyState.Wandering;
     private bool isChasing = false;
     private bool isAttacking = false;
     private bool inCombat = false;
@@ -71,7 +80,13 @@ public class EnemyAI : MonoBehaviour
     private float nextVisionCheck = 0f;
     private float lastStunTime = -999f;
 
-    // New: Track if we're in attack range
+    // Wandering state
+    private Vector3 wanderTarget;
+    private float nextWanderTime = 0f;
+    private Vector3 lastKnownPlayerPosition;
+    private bool hasLastKnownPosition = false;
+
+    // Track if we're in attack range
     private bool wasInAttackRange = false;
 
     void Start()
@@ -102,7 +117,7 @@ public class EnemyAI : MonoBehaviour
         // Configure NavMeshAgent
         if (agent != null)
         {
-            agent.speed = chaseSpeed;
+            agent.speed = wanderSpeed; // Start with wander speed
             agent.stoppingDistance = stoppingDistance;
             agent.radius = avoidanceRadius;
             agent.avoidancePriority = avoidancePriority;
@@ -119,6 +134,9 @@ public class EnemyAI : MonoBehaviour
         {
             debugRenderer.enabled = false;
         }
+
+        // Start wandering
+        SetWanderTarget();
     }
 
     void Update()
@@ -159,38 +177,151 @@ public class EnemyAI : MonoBehaviour
             animator.SetFloat("Speed", currentSpeed);
         }
 
-        // Determine chase state
-        UpdateChaseState();
+        // Determine and handle current state
+        UpdateState(distanceToPlayer);
+    }
 
-        // Handle combat and movement
-        if (isChasing)
+    void UpdateState(float distanceToPlayer)
+    {
+        EnemyState previousState = currentState;
+
+        // Determine state based on vision and memory
+        if (alwaysChase)
         {
-            bool inAttackRange = distanceToPlayer <= attackRange;
+            currentState = EnemyState.Chasing;
+            isChasing = true;
+        }
+        else if (canSeePlayer)
+        {
+            currentState = EnemyState.Chasing;
+            isChasing = true;
+            lastSeenTime = Time.time;
+            lastKnownPlayerPosition = player.position;
+            hasLastKnownPosition = true;
+        }
+        else if (isChasing && Time.time - lastSeenTime < memoryDuration)
+        {
+            // Still in memory window - chase last known position
+            currentState = EnemyState.Chasing;
+            isChasing = true;
+        }
+        else
+        {
+            // Lost sight for too long - wander
+            currentState = EnemyState.Wandering;
+            isChasing = false;
 
-            if (inAttackRange)
+            // Clean up combat state when transitioning to wandering
+            if (previousState != EnemyState.Wandering)
             {
-                // Just entered attack range - reset cooldown if we were chasing
-                if (!wasInAttackRange && !isAttacking)
-                {
-                    if (showDebug)
-                    {
-                        Debug.Log($"{gameObject.name} entered attack range - resetting cooldown");
-                    }
-                    nextAttackTime = Time.time; // Allow immediate attack
-                }
+                CancelCombat();
+                hasLastKnownPosition = false;
 
-                HandleCombatRange(distanceToPlayer);
-                wasInAttackRange = true;
+                if (showDebug)
+                {
+                    Debug.Log($"{gameObject.name} lost player - entering wander state");
+                }
+            }
+        }
+
+        // Handle behavior based on state
+        switch (currentState)
+        {
+            case EnemyState.Wandering:
+                HandleWandering();
+                break;
+
+            case EnemyState.Chasing:
+                bool inAttackRange = distanceToPlayer <= attackRange;
+
+                if (inAttackRange)
+                {
+                    // Just entered attack range
+                    if (!wasInAttackRange && !isAttacking)
+                    {
+                        if (showDebug)
+                        {
+                            Debug.Log($"{gameObject.name} entered attack range - resetting cooldown");
+                        }
+                        nextAttackTime = Time.time;
+                    }
+
+                    HandleCombatRange(distanceToPlayer);
+                    wasInAttackRange = true;
+                }
+                else
+                {
+                    HandleChaseMovement();
+                    wasInAttackRange = false;
+                }
+                break;
+        }
+    }
+
+    void HandleWandering()
+    {
+        // Set wander speed
+        if (agent.speed != wanderSpeed)
+        {
+            agent.speed = wanderSpeed;
+        }
+
+        // Re-enable avoidance when wandering
+        if (disableAvoidanceInCombat && agent.enabled)
+        {
+            agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
+        }
+
+        // Check if we've reached our wander target or need a new one
+        if (!agent.pathPending && agent.remainingDistance <= wanderPointReachThreshold)
+        {
+            // Wait at current position
+            if (Time.time >= nextWanderTime)
+            {
+                SetWanderTarget();
             }
             else
             {
-                HandleChaseMovement();
-                wasInAttackRange = false;
+                agent.isStopped = true;
             }
         }
         else
         {
-            wasInAttackRange = false;
+            agent.isStopped = false;
+        }
+
+        if (showDebug && agent.hasPath)
+        {
+            Debug.DrawLine(transform.position, wanderTarget, Color.blue);
+        }
+    }
+
+    void SetWanderTarget()
+    {
+        // Generate random point within wander radius
+        Vector3 randomDirection = Random.insideUnitSphere * wanderRadius;
+        randomDirection += transform.position;
+        randomDirection.y = transform.position.y; // Keep on same Y level
+
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(randomDirection, out hit, wanderRadius, NavMesh.AllAreas))
+        {
+            wanderTarget = hit.position;
+            agent.SetDestination(wanderTarget);
+            agent.isStopped = false;
+
+            // Set next wander time (when to pick a new point after reaching this one)
+            nextWanderTime = Time.time + Random.Range(minWanderWaitTime, maxWanderWaitTime);
+
+            if (showDebug)
+            {
+                Debug.Log($"{gameObject.name} new wander target set at {wanderTarget}");
+            }
+        }
+        else
+        {
+            // Couldn't find valid point, try again soon
+            nextWanderTime = Time.time + 1f;
         }
     }
 
@@ -243,48 +374,15 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    void UpdateChaseState()
-    {
-        bool wasChasing = isChasing;
-
-        if (alwaysChase)
-        {
-            isChasing = true;
-        }
-        else if (canSeePlayer)
-        {
-            isChasing = true;
-            lastSeenTime = Time.time;
-        }
-        else if (isChasing && Time.time - lastSeenTime < memoryDuration)
-        {
-            isChasing = true;
-        }
-        else
-        {
-            isChasing = false;
-
-            // Clean up combat state when losing chase
-            if (wasChasing)
-            {
-                CancelCombat();
-            }
-        }
-
-        // Reset combat state when re-engaging after losing sight
-        if (!wasChasing && isChasing && !isAttacking)
-        {
-            nextAttackTime = Time.time;
-            if (showDebug)
-            {
-                Debug.Log($"{gameObject.name} re-engaged chase - resetting attack cooldown");
-            }
-        }
-    }
-
     void HandleCombatRange(float distanceToPlayer)
     {
         agent.isStopped = true;
+
+        // Set chase speed for combat responsiveness
+        if (agent.speed != chaseSpeed)
+        {
+            agent.speed = chaseSpeed;
+        }
 
         // Disable avoidance in combat
         if (disableAvoidanceInCombat && agent.enabled)
@@ -319,6 +417,12 @@ public class EnemyAI : MonoBehaviour
 
     void HandleChaseMovement()
     {
+        // Set chase speed
+        if (agent.speed != chaseSpeed)
+        {
+            agent.speed = chaseSpeed;
+        }
+
         // Re-enable avoidance when chasing
         if (disableAvoidanceInCombat && agent.enabled)
         {
@@ -326,11 +430,17 @@ public class EnemyAI : MonoBehaviour
         }
 
         agent.isStopped = false;
-        agent.SetDestination(player.position);
+
+        // Chase current player position if visible, otherwise last known position
+        Vector3 targetPosition = canSeePlayer ? player.position :
+                                (hasLastKnownPosition ? lastKnownPlayerPosition : player.position);
+
+        agent.SetDestination(targetPosition);
 
         if (showDebug)
         {
-            Debug.DrawLine(transform.position, player.position, Color.red);
+            Color lineColor = canSeePlayer ? Color.red : Color.yellow;
+            Debug.DrawLine(transform.position, targetPosition, lineColor);
         }
     }
 
@@ -560,7 +670,7 @@ public class EnemyAI : MonoBehaviour
 
         if (showDebug)
         {
-            Debug.Log($"{gameObject.name} combat cancelled (lost chase)");
+            Debug.Log($"{gameObject.name} combat cancelled");
         }
     }
 
@@ -569,6 +679,10 @@ public class EnemyAI : MonoBehaviour
         // Detection range
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRange);
+
+        // Wander radius
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, wanderRadius);
 
         // Stopping distance
         Gizmos.color = Color.red;
@@ -595,11 +709,19 @@ public class EnemyAI : MonoBehaviour
             Gizmos.DrawLine(previousPoint, newPoint);
             previousPoint = newPoint;
         }
+
+        // Draw current wander target
+        if (Application.isPlaying && currentState == EnemyState.Wandering)
+        {
+            Gizmos.color = Color.blue;
+            Gizmos.DrawSphere(wanderTarget, 0.5f);
+        }
     }
 
     public void StopChasing()
     {
         isChasing = false;
+        currentState = EnemyState.Wandering;
         if (agent != null)
         {
             agent.isStopped = true;
@@ -609,6 +731,7 @@ public class EnemyAI : MonoBehaviour
     public void ResumeChasing()
     {
         isChasing = true;
+        currentState = EnemyState.Chasing;
         if (agent != null)
         {
             agent.isStopped = false;
@@ -623,6 +746,9 @@ public class EnemyAI : MonoBehaviour
             isChasing = true;
             canSeePlayer = true;
             lastSeenTime = Time.time;
+            currentState = EnemyState.Chasing;
+            lastKnownPlayerPosition = player.position;
+            hasLastKnownPosition = true;
 
             // Reset attack cooldown when newly alerted
             if (!isAttacking)
@@ -664,4 +790,5 @@ public class EnemyAI : MonoBehaviour
     // Public getters
     public bool IsAttacking() => isAttacking;
     public bool IsChasing() => isChasing;
+    public bool IsWandering() => currentState == EnemyState.Wandering;
 }

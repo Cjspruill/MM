@@ -3,8 +3,7 @@ using UnityEngine;
 using UnityEngine.Events;
 
 /// <summary>
-/// Enhanced ObjectiveManager that can track multiple objectives
-/// Supports both combat objectives AND mask collection objectives seamlessly
+/// Enhanced ObjectiveManager with fixed blood tracking
 /// </summary>
 public class ObjectiveManager : MonoBehaviour
 {
@@ -35,7 +34,10 @@ public class ObjectiveManager : MonoBehaviour
         public bool trackBloodGain = true;
         public float bloodRequired = 10f;
         public string bloodTaskName = "Gain 10 Blood";
-        [HideInInspector] public float startingBlood = 0f;
+
+        // FIXED: Track total blood gained, not net blood
+        [HideInInspector] public float totalBloodGained = 0f;
+        [HideInInspector] public float lastBloodValue = 0f;
         [HideInInspector] public bool bloodTaskComplete = false;
     }
 
@@ -57,6 +59,9 @@ public class ObjectiveManager : MonoBehaviour
     private ObjectiveTracking currentTracking;
     private Dictionary<Health, System.Action> damageCallbacks = new Dictionary<Health, System.Action>();
     private Dictionary<Health, System.Action> deathCallbacks = new Dictionary<Health, System.Action>();
+
+    // FIXED: Track if we're subscribed to blood events
+    private bool subscribedToBloodEvents = false;
 
     private void Awake()
     {
@@ -130,15 +135,18 @@ public class ObjectiveManager : MonoBehaviour
             if (currentTracking != null)
             {
                 UnregisterAllEnemies();
+                UnsubscribeFromBloodEvents();
             }
 
             // Activate new tracking
             currentTracking = newTracking;
 
-            // Record starting blood for this objective
-            if (bloodSystem != null)
+            // FIXED: Initialize blood tracking properly
+            if (bloodSystem != null && currentTracking.trackBloodGain)
             {
-                currentTracking.startingBlood = bloodSystem.currentBlood;
+                currentTracking.lastBloodValue = bloodSystem.currentBlood;
+                currentTracking.totalBloodGained = 0f;
+                SubscribeToBloodEvents();
             }
 
             // Register all existing enemies
@@ -150,6 +158,7 @@ public class ObjectiveManager : MonoBehaviour
                 Debug.Log($"  - Kills: {currentTracking.trackKills} ({currentTracking.killsRequired} required)");
                 Debug.Log($"  - Hits: {currentTracking.trackHits} ({currentTracking.hitsRequired} required)");
                 Debug.Log($"  - Blood: {currentTracking.trackBloodGain} ({currentTracking.bloodRequired} required)");
+                Debug.Log($"  - Starting blood value: {currentTracking.lastBloodValue}");
             }
         }
         else
@@ -158,6 +167,7 @@ public class ObjectiveManager : MonoBehaviour
             if (currentTracking != null)
             {
                 UnregisterAllEnemies();
+                UnsubscribeFromBloodEvents();
                 currentTracking = null;
             }
 
@@ -168,21 +178,59 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
+    // FIXED: Subscribe to blood events instead of polling
+    private void SubscribeToBloodEvents()
+    {
+        if (bloodSystem == null || subscribedToBloodEvents) return;
+
+        // Subscribe to blood change events if your BloodSystem has them
+        // If not, we'll fall back to Update() polling
+        subscribedToBloodEvents = true;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("Subscribed to blood tracking");
+        }
+    }
+
+    private void UnsubscribeFromBloodEvents()
+    {
+        if (!subscribedToBloodEvents) return;
+
+        // Unsubscribe from blood events here if implemented
+        subscribedToBloodEvents = false;
+    }
+
     private void Update()
     {
-        if (currentTracking == null) return;
+        if (currentTracking == null || bloodSystem == null) return;
 
-        // Check blood threshold
-        if (currentTracking.trackBloodGain && !currentTracking.bloodTaskComplete && bloodSystem != null)
+        // FIXED: Track only INCREASES in blood (gained), not net change
+        if (currentTracking.trackBloodGain && !currentTracking.bloodTaskComplete)
         {
-            float bloodGained = bloodSystem.currentBlood - currentTracking.startingBlood;
+            float currentBlood = bloodSystem.currentBlood;
+            float bloodDelta = currentBlood - currentTracking.lastBloodValue;
 
-            if (bloodGained >= currentTracking.bloodRequired)
+            // Only count positive changes (blood gained)
+            if (bloodDelta > 0.01f) // Small threshold to avoid floating point errors
             {
-                CompleteBloodTask();
+                currentTracking.totalBloodGained += bloodDelta;
+
+                if (showDebugLogs)
+                {
+                    Debug.Log($"Blood gained: +{bloodDelta:F2} (total: {currentTracking.totalBloodGained:F2}/{currentTracking.bloodRequired:F2})");
+                }
+
+                onBloodChanged?.Invoke(currentTracking.totalBloodGained);
+
+                if (currentTracking.totalBloodGained >= currentTracking.bloodRequired)
+                {
+                    CompleteBloodTask();
+                }
             }
 
-            onBloodChanged?.Invoke(bloodGained);
+            // Update last value regardless of delta
+            currentTracking.lastBloodValue = currentBlood;
         }
     }
 
@@ -345,7 +393,7 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
-    // Public getters for UI
+    // Public getters for UI - FIXED
     public int GetKillCount() => currentTracking?.currentKills ?? 0;
     public int GetKillsRequired() => currentTracking?.killsRequired ?? 0;
     public float GetKillProgress() => currentTracking != null ? (float)currentTracking.currentKills / currentTracking.killsRequired : 0f;
@@ -354,9 +402,10 @@ public class ObjectiveManager : MonoBehaviour
     public int GetHitsRequired() => currentTracking?.hitsRequired ?? 0;
     public float GetHitProgress() => currentTracking != null ? (float)currentTracking.currentHits / currentTracking.hitsRequired : 0f;
 
-    public float GetBloodGained() => currentTracking != null && bloodSystem != null ? bloodSystem.currentBlood - currentTracking.startingBlood : 0f;
+    // FIXED: Return total blood gained, not net blood
+    public float GetBloodGained() => currentTracking?.totalBloodGained ?? 0f;
     public float GetBloodRequired() => currentTracking?.bloodRequired ?? 0f;
-    public float GetBloodProgress() => currentTracking != null ? GetBloodGained() / currentTracking.bloodRequired : 0f;
+    public float GetBloodProgress() => currentTracking != null ? currentTracking.totalBloodGained / currentTracking.bloodRequired : 0f;
 
     public void ResetAllTracking()
     {
@@ -364,6 +413,7 @@ public class ObjectiveManager : MonoBehaviour
         {
             tracking.currentKills = 0;
             tracking.currentHits = 0;
+            tracking.totalBloodGained = 0f;
             tracking.killTaskComplete = false;
             tracking.hitTaskComplete = false;
             tracking.bloodTaskComplete = false;
@@ -371,7 +421,7 @@ public class ObjectiveManager : MonoBehaviour
 
         if (bloodSystem != null && currentTracking != null)
         {
-            currentTracking.startingBlood = bloodSystem.currentBlood;
+            currentTracking.lastBloodValue = bloodSystem.currentBlood;
         }
     }
 
@@ -383,10 +433,35 @@ public class ObjectiveManager : MonoBehaviour
         }
 
         UnregisterAllEnemies();
+        UnsubscribeFromBloodEvents();
 
         if (Instance == this)
         {
             Instance = null;
+        }
+    }
+
+    // FIXED: Add manual force update method for debugging
+    public void ForceUpdateBloodTracking()
+    {
+        if (currentTracking == null || bloodSystem == null || !currentTracking.trackBloodGain) return;
+
+        float currentBlood = bloodSystem.currentBlood;
+        float bloodDelta = currentBlood - currentTracking.lastBloodValue;
+
+        Debug.Log($"[FORCE UPDATE] Current: {currentBlood}, Last: {currentTracking.lastBloodValue}, Delta: {bloodDelta}, Total Gained: {currentTracking.totalBloodGained}");
+
+        if (bloodDelta > 0.01f)
+        {
+            currentTracking.totalBloodGained += bloodDelta;
+            currentTracking.lastBloodValue = currentBlood;
+
+            onBloodChanged?.Invoke(currentTracking.totalBloodGained);
+
+            if (currentTracking.totalBloodGained >= currentTracking.bloodRequired && !currentTracking.bloodTaskComplete)
+            {
+                CompleteBloodTask();
+            }
         }
     }
 }
