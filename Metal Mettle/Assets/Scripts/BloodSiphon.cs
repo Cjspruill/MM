@@ -169,13 +169,6 @@ public class BloodSiphon : MonoBehaviour
         Vector3 start = strand.sourcePosition;
         Vector3 end = mouthTarget.position;
 
-        // Calculate how much of the strand is visible (grows from source)
-        int visibleSegments = Mathf.CeilToInt(strandSegments * flowProgress);
-
-        // IMPORTANT: Only render visible segments (prevents line back to source)
-        visibleSegments = Mathf.Max(1, visibleSegments); // At least 1 segment
-        strand.lineRenderer.positionCount = visibleSegments;
-
         // Direction vector for perpendicular wave motion
         Vector3 direction = end - start;
         Vector3 perpendicular = Vector3.Cross(direction, Vector3.up).normalized;
@@ -186,20 +179,52 @@ public class BloodSiphon : MonoBehaviour
             perpendicular = Vector3.Cross(direction, Vector3.forward).normalized;
         }
 
-        // Only update the visible segments
-        for (int i = 0; i < visibleSegments; i++)
+        // Two-phase animation:
+        // Phase 1 (0.0 - 0.5): Strand grows from source to target
+        // Phase 2 (0.5 - 1.0): Strand shrinks from source (tail follows)
+
+        int visibleStartSegment = 0;
+        int visibleEndSegment = strandSegments;
+
+        if (flowProgress <= 0.5f)
         {
-            // Calculate t based on TOTAL segments, not visible ones
-            // This keeps the wave consistent as it grows
-            float t = i / (float)(strandSegments - 1);
+            // PHASE 1: Growing phase
+            float growProgress = flowProgress * 2f; // 0 to 1
+            visibleEndSegment = Mathf.CeilToInt(strandSegments * growProgress);
+        }
+        else
+        {
+            // PHASE 2: Shrinking from back phase (tail follows)
+            float shrinkProgress = (flowProgress - 0.5f) * 2f; // 0 to 1
+            visibleStartSegment = Mathf.FloorToInt(strandSegments * shrinkProgress);
+            visibleEndSegment = strandSegments;
+        }
+
+        // Clamp values
+        visibleStartSegment = Mathf.Clamp(visibleStartSegment, 0, strandSegments - 1);
+        visibleEndSegment = Mathf.Clamp(visibleEndSegment, 1, strandSegments);
+
+        int visibleCount = visibleEndSegment - visibleStartSegment;
+        visibleCount = Mathf.Max(1, visibleCount);
+
+        // Set LineRenderer to only show visible segments
+        strand.lineRenderer.positionCount = visibleCount;
+
+        // Update visible segment positions
+        for (int i = 0; i < visibleCount; i++)
+        {
+            // Map to original segment index
+            int originalIndex = visibleStartSegment + i;
+
+            // Calculate t based on original segment position
+            float t = originalIndex / (float)(strandSegments - 1);
 
             // Base position along the path
             Vector3 position = Vector3.Lerp(start, end, t);
 
-            // Add wave motion for organic feel (using elapsed time, not game time)
-            // Each segment gets offset by its index to create the wave shape
+            // Add wave motion for organic feel
             float waveTime = strand.elapsedTime * strandWaveFrequency;
-            float segmentPhase = i * 0.5f; // This creates the wave propagation along the strand
+            float segmentPhase = originalIndex * 0.5f;
             float waveOffset = Mathf.Sin(waveTime + strand.wavePhaseOffset + segmentPhase) * strandWaveAmplitude;
 
             // Reduce wave amplitude as strand reaches target (more stable near mouth)

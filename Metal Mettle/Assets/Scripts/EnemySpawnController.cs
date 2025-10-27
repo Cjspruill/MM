@@ -33,6 +33,8 @@ public class EnemySpawnController : MonoBehaviour
 
     private List<Vector3> activeSpawnPositions = new List<Vector3>();
 
+    [SerializeField] float spawnDelay;
+
     private void Awake()
     {
         activeSpawnPositions.Clear();
@@ -85,6 +87,17 @@ public class EnemySpawnController : MonoBehaviour
             Debug.Log($"Spawning {spawnCountOnStart} enemies on start...");
             SpawnMultipleEnemies(spawnCountOnStart);
         }
+        else
+        {
+            Invoke("BeginSpawn", spawnDelay);
+        }
+
+    }
+
+
+    public void BeginSpawn()
+    {
+        SpawnMultipleEnemies(spawnCountOnStart);
     }
 
     /// <summary>
