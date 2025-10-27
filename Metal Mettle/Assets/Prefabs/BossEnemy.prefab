@@ -124,7 +124,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d4202d47fc3142c45a5d68581d32a63f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseBloodDamage: 3
+  baseBloodDamage: 7
   blockedBloodDamage: 1
   blockPushbackDistance: 1.25
   blockPushbackDuration: 1.25
@@ -148,6 +148,7 @@ GameObject:
   - component: {fileID: 3498995452593493565}
   - component: {fileID: 5346031058384078683}
   - component: {fileID: 3820030510826889580}
+  - component: {fileID: 7192088731192683702}
   m_Layer: 3
   m_Name: BossEnemy
   m_TagString: Enemy
@@ -261,7 +262,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 00fc956a93074f743b401943df6c4ab1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  maxHealth: 200
+  maxHealth: 500
   currentHealth: 0
   destroyOnDeath: 1
   destroyDelay: 60
@@ -441,6 +442,20 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &7192088731192683702
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8462165098488616464}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4e93f75d6d3181e48954acd3996fc218, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BossEnemy
+  objectiveController: {fileID: 0}
+  taskToComplete: Defeat Boss Enemy
 --- !u!1001 &6562059022801010467
 PrefabInstance:
   m_ObjectHideFlags: 0

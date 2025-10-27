@@ -141,6 +141,12 @@ public class Health : MonoBehaviour
             }
         }
 
+        BossEnemy bossEnemy = GetComponent<BossEnemy>();
+        if (bossEnemy != null)
+        {
+            bossEnemy.UpdateObjectiveController();
+        }
+
 
         onDeath?.Invoke();
 
@@ -186,7 +192,14 @@ public class Health : MonoBehaviour
             Vector3 spawnPos = transform.position + bloodDropOffset + randomOffset;
 
             // Spawn blood orb - it will use its own bloodAmount from the prefab
-            Instantiate(bloodOrbPrefab, spawnPos, Quaternion.identity);
+            GameObject orb = Instantiate(bloodOrbPrefab, spawnPos, Quaternion.identity);
+
+            // Set the source position on the orb so it knows where it came from
+            BloodOrb bloodOrbComponent = orb.GetComponent<BloodOrb>();
+            if (bloodOrbComponent != null)
+            {
+                bloodOrbComponent.SetSourcePosition(transform.position + bloodDropOffset);
+            }
         }
     }
 

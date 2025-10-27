@@ -1,9 +1,10 @@
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 /// <summary>
 /// Enhanced spawner that works with your EnemySpawnController (with multiple spawn areas)
 /// Automatically registers all spawned enemies with ObjectiveManager
+/// NOW SUPPORTS: Continuous spawning during objectives (especially attack-count objectives)
 /// </summary>
 public class EnemySpawnerWithObjectives : MonoBehaviour
 {
@@ -15,6 +16,18 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
     [SerializeField] private float spawnInterval = 2f;
     [SerializeField] private bool spawnOnStart = true;
     [SerializeField] private bool spawnAllAtOnce = false;
+
+    [Header("Continuous Spawning (NEW)")]
+    [SerializeField] private bool continuousSpawning = false;
+    [SerializeField] private int maxActiveEnemies = 5; // Only for continuous mode
+    [SerializeField] private int maxTotalSpawns = -1; // -1 = unlimited, only for continuous mode
+    [SerializeField] private bool stopOnObjectiveComplete = true; // Stop when objective completes
+
+    [Header("Objective Integration (NEW)")]
+    [SerializeField] private ObjectiveController objectiveController;
+    [SerializeField] private string targetObjectiveName; // Which objective to monitor
+    [SerializeField] private string targetTaskName; // Which task to monitor (optional)
+    [SerializeField] private bool onlySpawnDuringObjective = false; // Only spawn when objective is active
 
     [Header("Enemy Selection")]
     [SerializeField] private bool spawnRandomTypes = true;
@@ -30,9 +43,13 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
     private int spawnedCount = 0;
     private float lastSpawnTime = 0f;
     private List<GameObject> spawnedEnemies = new List<GameObject>();
+    private bool isSpawningActive = false;
+    private bool objectiveComplete = false;
 
     private void Start()
     {
+        Debug.Log("=== EnemySpawnerWithObjectives START ===");
+
         // Auto-find spawn controller if not assigned
         if (spawnController == null)
         {
@@ -48,25 +65,98 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
             Debug.LogError("EnemySpawnerWithObjectives: No EnemySpawnController found!");
             return;
         }
+        else
+        {
+            Debug.Log($"EnemySpawnerWithObjectives: Found spawn controller: {spawnController.name}");
+        }
 
+        // Auto-find objective controller if not assigned
+        if (objectiveController == null && (onlySpawnDuringObjective || stopOnObjectiveComplete))
+        {
+            objectiveController = FindObjectOfType<ObjectiveController>();
+        }
+
+        if (objectiveController != null)
+        {
+            Debug.Log($"EnemySpawnerWithObjectives: Found objective controller");
+            // Subscribe to objective events
+            objectiveController.onTaskCompleted.AddListener(CheckObjectiveStatus);
+            objectiveController.onObjectiveChanged.AddListener(CheckObjectiveStatus);
+        }
+        else
+        {
+            Debug.Log("EnemySpawnerWithObjectives: No objective controller found");
+        }
+
+        // Log configuration
+        Debug.Log($"Continuous Spawning: {continuousSpawning}");
+        Debug.Log($"Spawn On Start: {spawnOnStart}");
+        Debug.Log($"Only Spawn During Objective: {onlySpawnDuringObjective}");
+        Debug.Log($"Target Objective: {targetObjectiveName}");
+        Debug.Log($"Max Active Enemies: {maxActiveEnemies}");
+        Debug.Log($"Spawn Interval: {spawnInterval}");
+
+        // Check if we should start spawning
         if (spawnOnStart)
         {
-            if (spawnAllAtOnce)
+            if (onlySpawnDuringObjective)
             {
-                SpawnAllEnemies();
+                Debug.Log("Checking objective status before spawning...");
+                CheckObjectiveStatus(); // Will start if objective is active
             }
             else
             {
-                // Spawn first enemy immediately
-                SpawnEnemy();
+                Debug.Log("Starting spawning immediately (not waiting for objective)");
+                StartSpawning();
             }
         }
+        else
+        {
+            Debug.Log("Spawn on start is FALSE - waiting for manual trigger");
+        }
+
+        Debug.Log($"isSpawningActive after Start: {isSpawningActive}");
     }
 
     private void Update()
     {
-        // Spawn enemies over time
-        if (!spawnAllAtOnce && spawnedCount < enemiesToSpawn)
+        if (!isSpawningActive)
+        {
+            // DEBUG: Show why we're not spawning every 2 seconds
+            if (Time.frameCount % 120 == 0) // Every ~2 seconds at 60fps
+            {
+                Debug.Log($"NOT SPAWNING - isSpawningActive: {isSpawningActive}, objectiveComplete: {objectiveComplete}");
+            }
+            return;
+        }
+
+        // Continuous spawning mode
+        if (continuousSpawning)
+        {
+            if (Time.time - lastSpawnTime >= spawnInterval)
+            {
+                CleanupDestroyedEnemies();
+
+                if (showDebugLogs)
+                {
+                    Debug.Log($"Spawn check - Active enemies: {spawnedEnemies.Count}/{maxActiveEnemies}, Total spawned: {spawnedCount}, Can spawn more: {CanSpawnMore()}");
+                }
+
+                if (CanSpawnMore())
+                {
+                    SpawnEnemy();
+                }
+                else
+                {
+                    if (showDebugLogs)
+                    {
+                        Debug.Log($"Cannot spawn more - Active: {spawnedEnemies.Count}/{maxActiveEnemies}");
+                    }
+                }
+            }
+        }
+        // Original timed spawning mode
+        else if (!spawnAllAtOnce && spawnedCount < enemiesToSpawn)
         {
             if (Time.time - lastSpawnTime >= spawnInterval)
             {
@@ -75,12 +165,189 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
         }
     }
 
+    private void CheckObjectiveStatus()
+    {
+        Debug.Log("=== CheckObjectiveStatus Called ===");
+
+        if (objectiveController == null)
+        {
+            Debug.Log("No objective controller - cannot check status");
+            // If no objective controller and we're supposed to spawn, just start
+            if (!onlySpawnDuringObjective && spawnOnStart)
+            {
+                Debug.Log("No objective requirement, starting spawning");
+                StartSpawning();
+            }
+            return;
+        }
+
+        var currentObjective = objectiveController.GetCurrentObjective();
+
+        if (currentObjective == null)
+        {
+            Debug.Log("No active objective");
+            if (isSpawningActive)
+            {
+                Debug.Log("Stopping spawn - no active objective");
+                StopSpawning();
+            }
+            return;
+        }
+
+        Debug.Log($"Current objective: {currentObjective.objectiveName}");
+        Debug.Log($"Target objective: {targetObjectiveName}");
+        Debug.Log($"Objective complete: {currentObjective.isComplete}");
+
+        // Check if this is our target objective
+        bool isTargetObjective = string.IsNullOrEmpty(targetObjectiveName) ||
+                                 currentObjective.objectiveName == targetObjectiveName;
+
+        Debug.Log($"Is target objective: {isTargetObjective}");
+
+        if (!isTargetObjective)
+        {
+            if (isSpawningActive)
+            {
+                Debug.Log("Not target objective - stopping spawn");
+                StopSpawning();
+            }
+            return;
+        }
+
+        // Check task-specific completion if needed
+        if (!string.IsNullOrEmpty(targetTaskName))
+        {
+            bool taskComplete = objectiveController.IsTaskComplete(targetTaskName);
+            Debug.Log($"Target task '{targetTaskName}' complete: {taskComplete}");
+
+            if (taskComplete)
+            {
+                Debug.Log($"Target task complete - stopping spawn");
+                objectiveComplete = true;
+                if (stopOnObjectiveComplete)
+                {
+                    StopSpawning();
+                }
+                return;
+            }
+        }
+
+        // Check objective completion
+        if (stopOnObjectiveComplete && currentObjective.isComplete)
+        {
+            Debug.Log("Objective complete - stopping spawn");
+            objectiveComplete = true;
+            StopSpawning();
+            return;
+        }
+
+        // If we got here and we're the target objective, start spawning
+        if (!isSpawningActive)
+        {
+            Debug.Log("Target objective is active and not complete - STARTING SPAWNING");
+            StartSpawning();
+        }
+        else
+        {
+            Debug.Log("Already spawning");
+        }
+    }
+
+    private bool CanSpawnMore()
+    {
+        // Check if objective is complete
+        if (objectiveComplete && stopOnObjectiveComplete)
+        {
+            if (showDebugLogs)
+            {
+                Debug.Log("Cannot spawn - objective complete");
+            }
+            return false;
+        }
+
+        // For continuous spawning
+        if (continuousSpawning)
+        {
+            // Check total spawn limit
+            if (maxTotalSpawns > 0 && spawnedCount >= maxTotalSpawns)
+            {
+                if (showDebugLogs)
+                {
+                    Debug.Log("Cannot spawn - hit max total spawns");
+                }
+                return false;
+            }
+
+            // Check active enemy limit
+            CleanupDestroyedEnemies();
+            int activeCount = spawnedEnemies.Count;
+
+            if (activeCount >= maxActiveEnemies)
+            {
+                if (showDebugLogs)
+                {
+                    Debug.Log($"Cannot spawn - at max active enemies ({activeCount}/{maxActiveEnemies})");
+                }
+                return false;
+            }
+
+            return true;
+        }
+        // For regular spawning
+        else
+        {
+            return spawnedCount < enemiesToSpawn;
+        }
+    }
+
+    public void StartSpawning()
+    {
+        Debug.Log("=== StartSpawning Called ===");
+
+        if (isSpawningActive)
+        {
+            Debug.Log("Already spawning - ignoring");
+            return;
+        }
+
+        isSpawningActive = true;
+        objectiveComplete = false;
+        lastSpawnTime = Time.time; // Reset timer
+
+        string mode = continuousSpawning ? "continuous" : "limited";
+        Debug.Log($"✓ SPAWNING STARTED ({mode} mode)");
+        Debug.Log($"  - Max Active: {maxActiveEnemies}");
+        Debug.Log($"  - Spawn Interval: {spawnInterval}s");
+        Debug.Log($"  - isSpawningActive: {isSpawningActive}");
+
+        // If spawn all at once, do it now
+        if (spawnAllAtOnce && !continuousSpawning)
+        {
+            SpawnAllEnemies();
+        }
+        // Otherwise spawn first enemy immediately
+        else
+        {
+            Debug.Log("Spawning first enemy immediately...");
+            SpawnEnemy();
+        }
+    }
+
+    public void StopSpawning()
+    {
+        if (!isSpawningActive)
+        {
+            Debug.Log("Already stopped - ignoring");
+            return;
+        }
+
+        isSpawningActive = false;
+        Debug.Log($"✗ SPAWNING STOPPED (Total spawned: {spawnedCount})");
+    }
+
     public void SpawnAllEnemies()
     {
-        if (showDebugLogs)
-        {
-            Debug.Log($"EnemySpawnerWithObjectives: Spawning all {enemiesToSpawn} enemies at once");
-        }
+        Debug.Log($"Spawning all {enemiesToSpawn} enemies at once");
 
         for (int i = 0; i < enemiesToSpawn; i++)
         {
@@ -90,18 +357,24 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
 
     public GameObject SpawnEnemy()
     {
-        if (spawnedCount >= enemiesToSpawn)
+        Debug.Log("=== SpawnEnemy Called ===");
+
+        // Check if we can spawn
+        if (!continuousSpawning && spawnedCount >= enemiesToSpawn)
         {
-            if (showDebugLogs)
-            {
-                Debug.Log("EnemySpawnerWithObjectives: All enemies spawned!");
-            }
+            Debug.Log("Cannot spawn - reached enemy limit (non-continuous mode)");
+            return null;
+        }
+
+        if (continuousSpawning && !CanSpawnMore())
+        {
+            Debug.Log("Cannot spawn - CanSpawnMore returned false");
             return null;
         }
 
         if (spawnController == null)
         {
-            Debug.LogError("EnemySpawnerWithObjectives: No spawn controller assigned!");
+            Debug.LogError("Cannot spawn - no spawn controller!");
             return null;
         }
 
@@ -110,13 +383,13 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
         // Spawn using your existing controller
         if (useSpecificArea)
         {
-            // Spawn in specific area
+            Debug.Log($"Spawning in specific area {specificAreaIndex}");
             int enemyIndex = spawnRandomTypes ? -1 : specificEnemyIndex;
             spawnedEnemy = spawnController.SpawnEnemyInArea(specificAreaIndex, enemyIndex);
         }
         else
         {
-            // Use spawn controller's area selection logic
+            Debug.Log("Spawning using controller's area selection");
             if (spawnRandomTypes)
             {
                 spawnedEnemy = spawnController.SpawnRandomEnemy();
@@ -129,7 +402,7 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
 
         if (spawnedEnemy == null)
         {
-            Debug.LogWarning("EnemySpawnerWithObjectives: Failed to spawn enemy!");
+            Debug.LogWarning("Spawn controller returned null!");
             return null;
         }
 
@@ -140,9 +413,13 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
         // AUTOMATICALLY register with ObjectiveManager
         RegisterEnemyWithObjectives(spawnedEnemy);
 
-        if (showDebugLogs)
+        if (continuousSpawning)
         {
-            Debug.Log($"EnemySpawnerWithObjectives: Spawned and registered enemy {spawnedCount}/{enemiesToSpawn}");
+            Debug.Log($"✓ Spawned enemy {spawnedCount} (Active: {spawnedEnemies.Count}/{maxActiveEnemies})");
+        }
+        else
+        {
+            Debug.Log($"✓ Spawned enemy {spawnedCount}/{enemiesToSpawn}");
         }
 
         return spawnedEnemy;
@@ -154,42 +431,37 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
 
         if (enemyHealth == null)
         {
-            Debug.LogWarning($"EnemySpawnerWithObjectives: Enemy {enemy.name} has no Health component!");
+            Debug.LogWarning($"Enemy {enemy.name} has no Health component!");
             return;
         }
 
         if (ObjectiveManager.Instance == null)
         {
-            Debug.LogWarning("EnemySpawnerWithObjectives: No active ObjectiveManager found in scene!");
-
             // Try to find ANY ObjectiveManager and use it
             ObjectiveManager[] allManagers = FindObjectsOfType<ObjectiveManager>();
             if (allManagers.Length > 0)
             {
-                Debug.Log($"EnemySpawnerWithObjectives: Found {allManagers.Length} ObjectiveManagers, registering with all active ones");
+                Debug.Log($"Registering with {allManagers.Length} ObjectiveManagers");
                 foreach (var manager in allManagers)
                 {
                     manager.RegisterEnemy(enemyHealth);
                 }
+            }
+            else
+            {
+                Debug.LogWarning("No ObjectiveManager found to register enemy!");
             }
             return;
         }
 
         // Register with the active instance
         ObjectiveManager.Instance.RegisterEnemy(enemyHealth);
-
-        if (showDebugLogs)
-        {
-            Debug.Log($"EnemySpawnerWithObjectives: Registered {enemy.name} with active ObjectiveManager");
-        }
+        Debug.Log($"Registered {enemy.name} with ObjectiveManager");
     }
 
     public void SpawnWave(int count)
     {
-        if (showDebugLogs)
-        {
-            Debug.Log($"EnemySpawnerWithObjectives: Spawning wave of {count} enemies");
-        }
+        Debug.Log($"Spawning wave of {count} enemies");
 
         for (int i = 0; i < count; i++)
         {
@@ -197,15 +469,9 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Spawn enemies in a specific area (useful for room-based spawning)
-    /// </summary>
     public void SpawnWaveInArea(int count, int areaIndex)
     {
-        if (showDebugLogs)
-        {
-            Debug.Log($"EnemySpawnerWithObjectives: Spawning wave of {count} enemies in area {areaIndex}");
-        }
+        Debug.Log($"Spawning wave of {count} enemies in area {areaIndex}");
 
         // Temporarily override area settings
         bool originalUseSpecific = useSpecificArea;
@@ -228,24 +494,43 @@ public class EnemySpawnerWithObjectives : MonoBehaviour
     public int GetRemainingCount() => enemiesToSpawn - spawnedCount;
     public List<GameObject> GetSpawnedEnemies() => new List<GameObject>(spawnedEnemies);
 
-    // Clean up destroyed enemies from list
     public void CleanupDestroyedEnemies()
     {
+        int before = spawnedEnemies.Count;
         spawnedEnemies.RemoveAll(enemy => enemy == null);
+        int after = spawnedEnemies.Count;
+
+        if (before != after && showDebugLogs)
+        {
+            Debug.Log($"Cleaned up {before - after} destroyed enemies. Active count: {after}");
+        }
     }
 
-    // Reset spawner
     public void ResetSpawner()
     {
         spawnedCount = 0;
         lastSpawnTime = 0f;
         spawnedEnemies.Clear();
+        isSpawningActive = false;
+        objectiveComplete = false;
+        Debug.Log("Spawner reset");
     }
 
-    // Get count of living enemies
     public int GetLivingEnemyCount()
     {
         CleanupDestroyedEnemies();
         return spawnedEnemies.Count;
+    }
+
+    public bool IsSpawning() => isSpawningActive;
+
+    private void OnDestroy()
+    {
+        // Unsubscribe from events
+        if (objectiveController != null)
+        {
+            objectiveController.onTaskCompleted.RemoveListener(CheckObjectiveStatus);
+            objectiveController.onObjectiveChanged.RemoveListener(CheckObjectiveStatus);
+        }
     }
 }
