@@ -34,6 +34,7 @@ public class DeathSaveSystem : MonoBehaviour
     private InputSystem_Actions controls;
     private AudioSource audioSource;
     private Health playerHealth;
+    private Animator playerAnimator;
 
     // Input action for execution
     private InputAction executionAction;
@@ -42,6 +43,7 @@ public class DeathSaveSystem : MonoBehaviour
     {
         bloodSystem = GetComponent<BloodSystem>();
         audioSource = GetComponent<AudioSource>();
+        playerAnimator = GetComponent<Animator>();
 
         // Get or create audio source
         if (audioSource == null)
@@ -55,6 +57,12 @@ public class DeathSaveSystem : MonoBehaviour
         if (playerHealth == null)
         {
             Debug.LogWarning("DeathSaveSystem: No Health component found on player. System will rely on BloodSystem instead.");
+        }
+
+        // Check for animator
+        if (playerAnimator == null)
+        {
+            Debug.LogWarning("DeathSaveSystem: No Animator component found on player. Execution animation will not play.");
         }
 
         // Setup input system
@@ -97,16 +105,26 @@ public class DeathSaveSystem : MonoBehaviour
         // Update UI prompt visibility
         if (executionPromptUI != null)
         {
-            bool hasTarget = GetNearestEnemy() != null;
+            Health nearestEnemy = GetNearestEnemy();
+            bool hasTarget = nearestEnemy != null;
 
             if (isInDeathSaveMode && hasTarget)
             {
                 executionPromptUI.Show();
+                Debug.Log($"Showing UI - Enemy in range: {nearestEnemy.gameObject.name}");
             }
             else
             {
                 executionPromptUI.Hide();
+                if (isInDeathSaveMode && !hasTarget)
+                {
+                    Debug.Log("Death Save active but no enemy in range");
+                }
             }
+        }
+        else if (isInDeathSaveMode)
+        {
+            Debug.LogWarning("DeathSaveSystem: executionPromptUI is not assigned!");
         }
 
         wasInDeathSaveLastFrame = isInDeathSaveMode;
@@ -185,6 +203,13 @@ public class DeathSaveSystem : MonoBehaviour
     {
         // Mark death save as used
         hasUsedDeathSave = true;
+
+        // Trigger execution animation
+        if (playerAnimator != null)
+        {
+            playerAnimator.Play("Execution");
+            Debug.Log("Playing execution animation");
+        }
 
         // Play execution audio
         if (audioSource != null && executionSound != null)
