@@ -217,8 +217,9 @@ public class DeathSaveSystem : MonoBehaviour
             audioSource.PlayOneShot(executionSound);
         }
 
-        // Kill the enemy instantly
-        targetEnemy.TakeDamage(999999f, false); // Massive damage to guarantee kill
+        // NEW: Use ExecutionKill method instead of TakeDamage
+        // This will properly fire the onExecution event for tracking
+        targetEnemy.ExecutionKill();
 
         // Restore player to full health
         if (bloodSystem != null)

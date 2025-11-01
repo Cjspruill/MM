@@ -30,7 +30,10 @@ public class Health : MonoBehaviour
 
     [Header("Events")]
     public UnityEvent onDamage;
+    public UnityEvent<bool> onLightAttack;  // NEW: Fires when hit by light attack (passes true)
+    public UnityEvent<bool> onHeavyAttack;  // NEW: Fires when hit by heavy attack (passes true)
     public UnityEvent onDeath;
+    public UnityEvent onExecution;  // NEW: Fires when killed by execution
 
     [Header("Debug")]
     public bool showDebugLogs = true;
@@ -83,11 +86,59 @@ public class Health : MonoBehaviour
             }
         }
 
+        // Fire the general damage event
         onDamage?.Invoke();
+
+        // NEW: Fire specific attack type events for tracking
+        if (isHeavyAttack)
+        {
+            onHeavyAttack?.Invoke(true);
+        }
+        else
+        {
+            onLightAttack?.Invoke(true);
+        }
 
         if (currentHealth <= 0)
         {
             Die(isHeavyAttack);
+        }
+    }
+
+    // NEW: Special execution kill method
+    public void ExecutionKill()
+    {
+        if (isDead) return;
+
+        isDead = true;
+        currentHealth = 0;
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"{gameObject.name} was EXECUTED!");
+        }
+
+        // Disable NavMesh agent on death
+        if (navAgent != null && navAgent.enabled)
+        {
+            navAgent.enabled = false;
+        }
+
+        // Drop blood orbs (use heavy attack amount for executions)
+        if (dropBloodOnDeath)
+        {
+            DropBloodOrbs(true);
+        }
+
+        // Fire execution event FIRST (so ObjectiveManager can track it)
+        onExecution?.Invoke();
+
+        // Then fire death event
+        onDeath?.Invoke();
+
+        if (destroyOnDeath)
+        {
+            Destroy(gameObject, destroyDelay);
         }
     }
 
@@ -127,11 +178,10 @@ public class Health : MonoBehaviour
             DropBloodOrbs(isHeavyAttack);
         }
 
-        // Check if this is player's first kill
+        // Check if this is player's first kill (tutorial)
         TutorialManager tutorialManager = FindFirstObjectByType<TutorialManager>();
         if (tutorialManager != null)
         {
-            // Find OnFirstKill tutorial and trigger it
             var step = tutorialManager.tutorialSteps.Find(s =>
                 s.triggerType == TutorialTriggerType.OnFirstKill);
 
@@ -141,12 +191,12 @@ public class Health : MonoBehaviour
             }
         }
 
+        // Check for boss enemy
         BossEnemy bossEnemy = GetComponent<BossEnemy>();
         if (bossEnemy != null)
         {
             bossEnemy.UpdateObjectiveController();
         }
-
 
         onDeath?.Invoke();
 
@@ -180,32 +230,46 @@ public class Health : MonoBehaviour
             Debug.Log($"Dropping {orbCount} blood orbs ({(isHeavyAttack ? "HEAVY" : "LIGHT")} attack)");
         }
 
-        // Spawn orbs in a spread pattern
+        // Spawn orbs with explosion physics
+        Vector3 spawnPosition = transform.position + bloodDropOffset;
+
         for (int i = 0; i < orbCount; i++)
         {
-            // Random spread around the spawn point
-            Vector3 randomOffset = new Vector3(
-                Random.Range(-0.5f, 0.5f),
-                0,
-                Random.Range(-0.5f, 0.5f)
-            );
-            Vector3 spawnPos = transform.position + bloodDropOffset + randomOffset;
+            GameObject orb = Instantiate(bloodOrbPrefab, spawnPosition, Quaternion.identity);
 
-            // Spawn blood orb - it will use its own bloodAmount from the prefab
-            GameObject orb = Instantiate(bloodOrbPrefab, spawnPos, Quaternion.identity);
-
-            // Set the source position on the orb so it knows where it came from
-            BloodOrb bloodOrbComponent = orb.GetComponent<BloodOrb>();
-            if (bloodOrbComponent != null)
+            // Apply random explosion force
+            Rigidbody rb = orb.GetComponent<Rigidbody>();
+            if (rb != null)
             {
-                bloodOrbComponent.SetSourcePosition(transform.position + bloodDropOffset);
+                Vector3 randomDirection = Random.insideUnitSphere;
+                randomDirection.y = Mathf.Abs(randomDirection.y); // Keep orbs going up/out
+                rb.AddForce(randomDirection * Random.Range(3f, 6f), ForceMode.Impulse);
             }
         }
     }
 
-    // Public getters
-    public bool IsDead() => isDead;
-    public float GetHealthPercent() => currentHealth / maxHealth;
-    public float GetCurrentHealth() => currentHealth;
-    public float GetMaxHealth() => maxHealth;
+    public bool IsDead()
+    {
+        return isDead;
+    }
+
+    public float GetHealthPercent()
+    {
+        return currentHealth / maxHealth;
+    }
+
+    public float GetHealthPercentage()
+    {
+        return currentHealth / maxHealth;
+    }
+
+    public float GetCurrentHealth()
+    {
+        return currentHealth;
+    }
+
+    public float GetMaxHealth()
+    {
+        return maxHealth;
+    }
 }

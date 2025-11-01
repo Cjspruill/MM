@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.Events;
 
 /// <summary>
-/// Enhanced ObjectiveManager with fixed blood tracking
+/// Enhanced ObjectiveManager with light/heavy attack tracking and execution kills
 /// </summary>
 public class ObjectiveManager : MonoBehaviour
 {
@@ -23,19 +23,40 @@ public class ObjectiveManager : MonoBehaviour
         [HideInInspector] public int currentKills = 0;
         [HideInInspector] public bool killTaskComplete = false;
 
-        [Header("Hit Tracking")]
+        [Header("Execution Kill Tracking")]
+        public bool trackExecutions = false;
+        public int executionsRequired = 5;
+        public string executionTaskName = "Execute 5 Enemies";
+        [HideInInspector] public int currentExecutions = 0;
+        [HideInInspector] public bool executionTaskComplete = false;
+
+        [Header("Hit Tracking (All Attacks)")]
         public bool trackHits = false;
         public int hitsRequired = 10;
         public string hitTaskName = "Land 10 Attacks";
         [HideInInspector] public int currentHits = 0;
         [HideInInspector] public bool hitTaskComplete = false;
 
+        [Header("Light Attack Tracking")]
+        public bool trackLightAttacks = false;
+        public int lightAttacksRequired = 15;
+        public string lightAttackTaskName = "Land 15 Light Attacks";
+        [HideInInspector] public int currentLightAttacks = 0;
+        [HideInInspector] public bool lightAttackTaskComplete = false;
+
+        [Header("Heavy Attack Tracking")]
+        public bool trackHeavyAttacks = false;
+        public int heavyAttacksRequired = 10;
+        public string heavyAttackTaskName = "Land 10 Heavy Attacks";
+        [HideInInspector] public int currentHeavyAttacks = 0;
+        [HideInInspector] public bool heavyAttackTaskComplete = false;
+
         [Header("Blood Tracking")]
         public bool trackBloodGain = true;
         public float bloodRequired = 10f;
         public string bloodTaskName = "Gain 10 Blood";
 
-        // FIXED: Track total blood gained, not net blood
+        // Track total blood gained, not net blood
         [HideInInspector] public float totalBloodGained = 0f;
         [HideInInspector] public float lastBloodValue = 0f;
         [HideInInspector] public bool bloodTaskComplete = false;
@@ -50,7 +71,10 @@ public class ObjectiveManager : MonoBehaviour
 
     [Header("Events")]
     public UnityEvent<int> onKillCountChanged;
+    public UnityEvent<int> onExecutionCountChanged;
     public UnityEvent<int> onHitCountChanged;
+    public UnityEvent<int> onLightAttackCountChanged;
+    public UnityEvent<int> onHeavyAttackCountChanged;
     public UnityEvent<float> onBloodChanged;
 
     [Header("Debug")]
@@ -58,9 +82,12 @@ public class ObjectiveManager : MonoBehaviour
 
     private ObjectiveTracking currentTracking;
     private Dictionary<Health, System.Action> damageCallbacks = new Dictionary<Health, System.Action>();
+    private Dictionary<Health, System.Action<bool>> lightAttackCallbacks = new Dictionary<Health, System.Action<bool>>();
+    private Dictionary<Health, System.Action<bool>> heavyAttackCallbacks = new Dictionary<Health, System.Action<bool>>();
     private Dictionary<Health, System.Action> deathCallbacks = new Dictionary<Health, System.Action>();
+    private Dictionary<Health, System.Action> executionCallbacks = new Dictionary<Health, System.Action>();
 
-    // FIXED: Track if we're subscribed to blood events
+    // Track if we're subscribed to blood events
     private bool subscribedToBloodEvents = false;
 
     private void Awake()
@@ -141,7 +168,7 @@ public class ObjectiveManager : MonoBehaviour
             // Activate new tracking
             currentTracking = newTracking;
 
-            // FIXED: Initialize blood tracking properly
+            // Initialize blood tracking properly
             if (bloodSystem != null && currentTracking.trackBloodGain)
             {
                 currentTracking.lastBloodValue = bloodSystem.currentBlood;
@@ -156,7 +183,10 @@ public class ObjectiveManager : MonoBehaviour
             {
                 Debug.Log($"✓ Activated tracking for: {currentTracking.objectiveName}");
                 Debug.Log($"  - Kills: {currentTracking.trackKills} ({currentTracking.killsRequired} required)");
+                Debug.Log($"  - Executions: {currentTracking.trackExecutions} ({currentTracking.executionsRequired} required)");
                 Debug.Log($"  - Hits: {currentTracking.trackHits} ({currentTracking.hitsRequired} required)");
+                Debug.Log($"  - Light Attacks: {currentTracking.trackLightAttacks} ({currentTracking.lightAttacksRequired} required)");
+                Debug.Log($"  - Heavy Attacks: {currentTracking.trackHeavyAttacks} ({currentTracking.heavyAttacksRequired} required)");
                 Debug.Log($"  - Blood: {currentTracking.trackBloodGain} ({currentTracking.bloodRequired} required)");
                 Debug.Log($"  - Starting blood value: {currentTracking.lastBloodValue}");
             }
@@ -178,13 +208,10 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
-    // FIXED: Subscribe to blood events instead of polling
     private void SubscribeToBloodEvents()
     {
         if (bloodSystem == null || subscribedToBloodEvents) return;
 
-        // Subscribe to blood change events if your BloodSystem has them
-        // If not, we'll fall back to Update() polling
         subscribedToBloodEvents = true;
 
         if (showDebugLogs)
@@ -197,7 +224,6 @@ public class ObjectiveManager : MonoBehaviour
     {
         if (!subscribedToBloodEvents) return;
 
-        // Unsubscribe from blood events here if implemented
         subscribedToBloodEvents = false;
     }
 
@@ -205,7 +231,7 @@ public class ObjectiveManager : MonoBehaviour
     {
         if (currentTracking == null || bloodSystem == null) return;
 
-        // FIXED: Track only INCREASES in blood (gained), not net change
+        // Track only INCREASES in blood (gained), not net change
         if (currentTracking.trackBloodGain && !currentTracking.bloodTaskComplete)
         {
             float currentBlood = bloodSystem.currentBlood;
@@ -264,12 +290,28 @@ public class ObjectiveManager : MonoBehaviour
         if (damageCallbacks.ContainsKey(enemy) || deathCallbacks.ContainsKey(enemy))
             return;
 
-        // Register hit tracking
+        // Register general hit tracking (any damage)
         if (currentTracking.trackHits)
         {
             System.Action damageCallback = () => OnEnemyHit(enemy);
             damageCallbacks[enemy] = damageCallback;
             enemy.onDamage.AddListener(new UnityEngine.Events.UnityAction(damageCallback));
+        }
+
+        // Register light attack tracking
+        if (currentTracking.trackLightAttacks)
+        {
+            System.Action<bool> lightCallback = (isLight) => OnLightAttackHit(enemy, isLight);
+            lightAttackCallbacks[enemy] = lightCallback;
+            enemy.onLightAttack.AddListener(new UnityEngine.Events.UnityAction<bool>(lightCallback));
+        }
+
+        // Register heavy attack tracking
+        if (currentTracking.trackHeavyAttacks)
+        {
+            System.Action<bool> heavyCallback = (isHeavy) => OnHeavyAttackHit(enemy, isHeavy);
+            heavyAttackCallbacks[enemy] = heavyCallback;
+            enemy.onHeavyAttack.AddListener(new UnityEngine.Events.UnityAction<bool>(heavyCallback));
         }
 
         // Register kill tracking
@@ -278,6 +320,14 @@ public class ObjectiveManager : MonoBehaviour
             System.Action deathCallback = () => OnEnemyKilled(enemy);
             deathCallbacks[enemy] = deathCallback;
             enemy.onDeath.AddListener(new UnityEngine.Events.UnityAction(deathCallback));
+        }
+
+        // Register execution tracking
+        if (currentTracking.trackExecutions)
+        {
+            System.Action executionCallback = () => OnEnemyExecuted(enemy);
+            executionCallbacks[enemy] = executionCallback;
+            enemy.onExecution.AddListener(new UnityEngine.Events.UnityAction(executionCallback));
         }
 
         if (showDebugLogs)
@@ -298,6 +348,26 @@ public class ObjectiveManager : MonoBehaviour
         }
         damageCallbacks.Clear();
 
+        // Unsubscribe light attack callbacks
+        foreach (var kvp in lightAttackCallbacks)
+        {
+            if (kvp.Key != null)
+            {
+                kvp.Key.onLightAttack.RemoveListener(new UnityEngine.Events.UnityAction<bool>(kvp.Value));
+            }
+        }
+        lightAttackCallbacks.Clear();
+
+        // Unsubscribe heavy attack callbacks
+        foreach (var kvp in heavyAttackCallbacks)
+        {
+            if (kvp.Key != null)
+            {
+                kvp.Key.onHeavyAttack.RemoveListener(new UnityEngine.Events.UnityAction<bool>(kvp.Value));
+            }
+        }
+        heavyAttackCallbacks.Clear();
+
         // Unsubscribe death callbacks
         foreach (var kvp in deathCallbacks)
         {
@@ -307,6 +377,16 @@ public class ObjectiveManager : MonoBehaviour
             }
         }
         deathCallbacks.Clear();
+
+        // Unsubscribe execution callbacks
+        foreach (var kvp in executionCallbacks)
+        {
+            if (kvp.Key != null)
+            {
+                kvp.Key.onExecution.RemoveListener(new UnityEngine.Events.UnityAction(kvp.Value));
+            }
+        }
+        executionCallbacks.Clear();
     }
 
     private void OnEnemyHit(Health enemy)
@@ -324,6 +404,42 @@ public class ObjectiveManager : MonoBehaviour
         if (currentTracking.currentHits >= currentTracking.hitsRequired)
         {
             CompleteHitTask();
+        }
+    }
+
+    private void OnLightAttackHit(Health enemy, bool isLight)
+    {
+        if (currentTracking == null || currentTracking.lightAttackTaskComplete || !isLight) return;
+
+        currentTracking.currentLightAttacks++;
+        onLightAttackCountChanged?.Invoke(currentTracking.currentLightAttacks);
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"Light attack count: {currentTracking.currentLightAttacks}/{currentTracking.lightAttacksRequired}");
+        }
+
+        if (currentTracking.currentLightAttacks >= currentTracking.lightAttacksRequired)
+        {
+            CompleteLightAttackTask();
+        }
+    }
+
+    private void OnHeavyAttackHit(Health enemy, bool isHeavy)
+    {
+        if (currentTracking == null || currentTracking.heavyAttackTaskComplete || !isHeavy) return;
+
+        currentTracking.currentHeavyAttacks++;
+        onHeavyAttackCountChanged?.Invoke(currentTracking.currentHeavyAttacks);
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"Heavy attack count: {currentTracking.currentHeavyAttacks}/{currentTracking.heavyAttacksRequired}");
+        }
+
+        if (currentTracking.currentHeavyAttacks >= currentTracking.heavyAttacksRequired)
+        {
+            CompleteHeavyAttackTask();
         }
     }
 
@@ -345,14 +461,33 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
+    private void OnEnemyExecuted(Health enemy)
+    {
+        if (currentTracking == null || currentTracking.executionTaskComplete) return;
+
+        currentTracking.currentExecutions++;
+        onExecutionCountChanged?.Invoke(currentTracking.currentExecutions);
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"Execution count: {currentTracking.currentExecutions}/{currentTracking.executionsRequired}");
+        }
+
+        if (currentTracking.currentExecutions >= currentTracking.executionsRequired)
+        {
+            CompleteExecutionTask();
+        }
+    }
+
     private void CompleteHitTask()
     {
         if (currentTracking.hitTaskComplete) return;
+
         currentTracking.hitTaskComplete = true;
 
         if (showDebugLogs)
         {
-            Debug.Log($"✓ Hit objective complete: {currentTracking.hitTaskName}");
+            Debug.Log($"✓ Hit task complete: {currentTracking.hitTaskName}");
         }
 
         if (objectiveController != null)
@@ -361,14 +496,49 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
+    private void CompleteLightAttackTask()
+    {
+        if (currentTracking.lightAttackTaskComplete) return;
+
+        currentTracking.lightAttackTaskComplete = true;
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"✓ Light attack task complete: {currentTracking.lightAttackTaskName}");
+        }
+
+        if (objectiveController != null)
+        {
+            objectiveController.CompleteTask(currentTracking.lightAttackTaskName);
+        }
+    }
+
+    private void CompleteHeavyAttackTask()
+    {
+        if (currentTracking.heavyAttackTaskComplete) return;
+
+        currentTracking.heavyAttackTaskComplete = true;
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"✓ Heavy attack task complete: {currentTracking.heavyAttackTaskName}");
+        }
+
+        if (objectiveController != null)
+        {
+            objectiveController.CompleteTask(currentTracking.heavyAttackTaskName);
+        }
+    }
+
     private void CompleteKillTask()
     {
         if (currentTracking.killTaskComplete) return;
+
         currentTracking.killTaskComplete = true;
 
         if (showDebugLogs)
         {
-            Debug.Log($"✓ Kill objective complete: {currentTracking.killTaskName}");
+            Debug.Log($"✓ Kill task complete: {currentTracking.killTaskName}");
         }
 
         if (objectiveController != null)
@@ -377,14 +547,32 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
+    private void CompleteExecutionTask()
+    {
+        if (currentTracking.executionTaskComplete) return;
+
+        currentTracking.executionTaskComplete = true;
+
+        if (showDebugLogs)
+        {
+            Debug.Log($"✓ Execution task complete: {currentTracking.executionTaskName}");
+        }
+
+        if (objectiveController != null)
+        {
+            objectiveController.CompleteTask(currentTracking.executionTaskName);
+        }
+    }
+
     private void CompleteBloodTask()
     {
         if (currentTracking.bloodTaskComplete) return;
+
         currentTracking.bloodTaskComplete = true;
 
         if (showDebugLogs)
         {
-            Debug.Log($"✓ Blood objective complete: {currentTracking.bloodTaskName}");
+            Debug.Log($"✓ Blood task complete: {currentTracking.bloodTaskName}");
         }
 
         if (objectiveController != null)
@@ -393,75 +581,18 @@ public class ObjectiveManager : MonoBehaviour
         }
     }
 
-    // Public getters for UI - FIXED
-    public int GetKillCount() => currentTracking?.currentKills ?? 0;
+    // Public getters for UI
+    public int GetCurrentKills() => currentTracking?.currentKills ?? 0;
+    public int GetCurrentExecutions() => currentTracking?.currentExecutions ?? 0;
+    public int GetCurrentHits() => currentTracking?.currentHits ?? 0;
+    public int GetCurrentLightAttacks() => currentTracking?.currentLightAttacks ?? 0;
+    public int GetCurrentHeavyAttacks() => currentTracking?.currentHeavyAttacks ?? 0;
+    public float GetCurrentBloodGained() => currentTracking?.totalBloodGained ?? 0f;
+
     public int GetKillsRequired() => currentTracking?.killsRequired ?? 0;
-    public float GetKillProgress() => currentTracking != null ? (float)currentTracking.currentKills / currentTracking.killsRequired : 0f;
-
-    public int GetHitCount() => currentTracking?.currentHits ?? 0;
+    public int GetExecutionsRequired() => currentTracking?.executionsRequired ?? 0;
     public int GetHitsRequired() => currentTracking?.hitsRequired ?? 0;
-    public float GetHitProgress() => currentTracking != null ? (float)currentTracking.currentHits / currentTracking.hitsRequired : 0f;
-
-    // FIXED: Return total blood gained, not net blood
-    public float GetBloodGained() => currentTracking?.totalBloodGained ?? 0f;
+    public int GetLightAttacksRequired() => currentTracking?.lightAttacksRequired ?? 0;
+    public int GetHeavyAttacksRequired() => currentTracking?.heavyAttacksRequired ?? 0;
     public float GetBloodRequired() => currentTracking?.bloodRequired ?? 0f;
-    public float GetBloodProgress() => currentTracking != null ? currentTracking.totalBloodGained / currentTracking.bloodRequired : 0f;
-
-    public void ResetAllTracking()
-    {
-        foreach (var tracking in objectives)
-        {
-            tracking.currentKills = 0;
-            tracking.currentHits = 0;
-            tracking.totalBloodGained = 0f;
-            tracking.killTaskComplete = false;
-            tracking.hitTaskComplete = false;
-            tracking.bloodTaskComplete = false;
-        }
-
-        if (bloodSystem != null && currentTracking != null)
-        {
-            currentTracking.lastBloodValue = bloodSystem.currentBlood;
-        }
-    }
-
-    private void OnDestroy()
-    {
-        if (objectiveController != null)
-        {
-            objectiveController.onObjectiveChanged.RemoveListener(OnObjectiveChanged);
-        }
-
-        UnregisterAllEnemies();
-        UnsubscribeFromBloodEvents();
-
-        if (Instance == this)
-        {
-            Instance = null;
-        }
-    }
-
-    // FIXED: Add manual force update method for debugging
-    public void ForceUpdateBloodTracking()
-    {
-        if (currentTracking == null || bloodSystem == null || !currentTracking.trackBloodGain) return;
-
-        float currentBlood = bloodSystem.currentBlood;
-        float bloodDelta = currentBlood - currentTracking.lastBloodValue;
-
-        Debug.Log($"[FORCE UPDATE] Current: {currentBlood}, Last: {currentTracking.lastBloodValue}, Delta: {bloodDelta}, Total Gained: {currentTracking.totalBloodGained}");
-
-        if (bloodDelta > 0.01f)
-        {
-            currentTracking.totalBloodGained += bloodDelta;
-            currentTracking.lastBloodValue = currentBlood;
-
-            onBloodChanged?.Invoke(currentTracking.totalBloodGained);
-
-            if (currentTracking.totalBloodGained >= currentTracking.bloodRequired && !currentTracking.bloodTaskComplete)
-            {
-                CompleteBloodTask();
-            }
-        }
-    }
 }

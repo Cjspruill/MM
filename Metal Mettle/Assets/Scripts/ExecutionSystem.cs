@@ -481,8 +481,7 @@ public class ExecutionSystem : MonoBehaviour
         // Wait for slow-mo to play out (real-time)
         yield return new WaitForSecondsRealtime(slowMotionDuration);
 
-        // 9. KILL ENEMY INSTANTLY
-        enemy.TakeDamage(999999f, true); // Overkill damage
+        enemy.ExecutionKill(); // Use new execution method for proper tracking
 
         // 10. SPAWN EXTRA BLOOD ORBS
         SpawnExecutionBlood(enemy.transform.position);
