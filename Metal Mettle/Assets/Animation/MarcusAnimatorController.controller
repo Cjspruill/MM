@@ -1171,10 +1171,10 @@ BlendTree:
     m_DirectBlendParameter: AttackSpeed
     m_Mirror: 0
   - serializedVersion: 2
-    m_Motion: {fileID: -203655887218126122, guid: 0b0693a3d007715499cce73aeebddce8, type: 3}
+    m_Motion: {fileID: -203655887218126122, guid: 01b83aa5d6937a247a352bbb4b157636, type: 3}
     m_Threshold: 0.625
     m_Position: {x: 0, y: 1}
-    m_TimeScale: 1.25
+    m_TimeScale: 1
     m_CycleOffset: 0
     m_DirectBlendParameter: AttackSpeed
     m_Mirror: 0

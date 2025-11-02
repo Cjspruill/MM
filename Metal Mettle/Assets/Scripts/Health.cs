@@ -25,29 +25,33 @@ public class Health : MonoBehaviour
     public int maxHeavyOrbCount = 6;
 
     [Header("Alert Settings")]
-    public bool alertOnDamage = true; // Alert AI when taking damage
-    public float damageAnimationChance = 0.5f; // 50% chance to play damage animation
+    public bool alertOnDamage = true;
+
+    [Range(0f, 1f)]
+    public float damageAnimationChance = 0.5f; // 0.5 = 50% chance to play animation
+    public float damageAnimCooldown = 0.5f; // prevents animation spam
+    private float lastDamageAnimTime = -999f;
 
     [Header("Events")]
     public UnityEvent onDamage;
-    public UnityEvent<bool> onLightAttack;  // NEW: Fires when hit by light attack (passes true)
-    public UnityEvent<bool> onHeavyAttack;  // NEW: Fires when hit by heavy attack (passes true)
+    public UnityEvent<bool> onLightAttack;
+    public UnityEvent<bool> onHeavyAttack;
     public UnityEvent onDeath;
-    public UnityEvent onExecution;  // NEW: Fires when killed by execution
+    public UnityEvent onExecution;
 
     [Header("Debug")]
     public bool showDebugLogs = true;
 
     private bool isDead = false;
     private NavMeshAgent navAgent;
-    private EnemyAI enemyAI;
+    private EnemyMovement enemyMovement;
     private Animator animator;
 
     void Start()
     {
         currentHealth = maxHealth;
         navAgent = GetComponent<NavMeshAgent>();
-        enemyAI = GetComponent<EnemyAI>();
+        enemyMovement = GetComponent<EnemyMovement>();
         animator = GetComponent<Animator>();
     }
 
@@ -65,47 +69,50 @@ public class Health : MonoBehaviour
 
         // Drop blood orbs on hit
         if (dropBloodOnHit)
-        {
             DropBloodOrbs(isHeavyAttack);
-        }
 
-        // Alert enemy AI to player
-        if (alertOnDamage && enemyAI != null)
+        // Alert AI to player
+        if (alertOnDamage && enemyMovement != null)
         {
-            enemyAI.AlertToPlayer();
+            GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
+            if (playerObj != null)
+                enemyMovement.AlertToPlayer(playerObj.transform.position);
         }
 
-        // Play damage animation 50% of the time
-        if (animator != null && Random.value <= damageAnimationChance)
+        // Handle damage animation chance and cooldown
+        TryPlayDamageAnimation(isHeavyAttack);
+
+        // Fire events
+        onDamage?.Invoke();
+        if (isHeavyAttack)
+            onHeavyAttack?.Invoke(true);
+        else
+            onLightAttack?.Invoke(true);
+
+        // Check death
+        if (currentHealth <= 0)
+            Die(isHeavyAttack);
+    }
+
+    private void TryPlayDamageAnimation(bool isHeavyAttack)
+    {
+        if (animator == null) return;
+
+        // Heavy attacks always force a damage animation
+        bool shouldPlay = isHeavyAttack || Random.value < damageAnimationChance;
+
+        if (shouldPlay && Time.time - lastDamageAnimTime >= damageAnimCooldown)
         {
             animator.SetTrigger("Damage");
+            lastDamageAnimTime = Time.time;
 
             if (showDebugLogs)
             {
-                Debug.Log($"{gameObject.name} playing damage animation");
+                Debug.Log($"{gameObject.name} playing damage animation ({(isHeavyAttack ? "HEAVY FORCE" : $"{damageAnimationChance * 100f}% chance")})");
             }
-        }
-
-        // Fire the general damage event
-        onDamage?.Invoke();
-
-        // NEW: Fire specific attack type events for tracking
-        if (isHeavyAttack)
-        {
-            onHeavyAttack?.Invoke(true);
-        }
-        else
-        {
-            onLightAttack?.Invoke(true);
-        }
-
-        if (currentHealth <= 0)
-        {
-            Die(isHeavyAttack);
         }
     }
 
-    // NEW: Special execution kill method
     public void ExecutionKill()
     {
         if (isDead) return;
@@ -114,32 +121,19 @@ public class Health : MonoBehaviour
         currentHealth = 0;
 
         if (showDebugLogs)
-        {
             Debug.Log($"{gameObject.name} was EXECUTED!");
-        }
 
-        // Disable NavMesh agent on death
         if (navAgent != null && navAgent.enabled)
-        {
             navAgent.enabled = false;
-        }
 
-        // Drop blood orbs (use heavy attack amount for executions)
         if (dropBloodOnDeath)
-        {
             DropBloodOrbs(true);
-        }
 
-        // Fire execution event FIRST (so ObjectiveManager can track it)
         onExecution?.Invoke();
-
-        // Then fire death event
         onDeath?.Invoke();
 
         if (destroyOnDeath)
-        {
             Destroy(gameObject, destroyDelay);
-        }
     }
 
     public void Heal(float amount)
@@ -150,126 +144,59 @@ public class Health : MonoBehaviour
         currentHealth = Mathf.Min(currentHealth, maxHealth);
 
         if (showDebugLogs)
-        {
             Debug.Log($"{gameObject.name} healed {amount}. Health: {currentHealth}/{maxHealth}");
-        }
     }
 
     void Die(bool isHeavyAttack = false)
     {
         if (isDead) return;
-
         isDead = true;
 
         if (showDebugLogs)
-        {
             Debug.Log($"{gameObject.name} died!");
-        }
 
-        // Disable NavMesh agent on death
         if (navAgent != null && navAgent.enabled)
-        {
             navAgent.enabled = false;
-        }
 
-        // Drop blood orbs on death
         if (dropBloodOnDeath)
-        {
             DropBloodOrbs(isHeavyAttack);
-        }
-
-        // Check if this is player's first kill (tutorial)
-        TutorialManager tutorialManager = FindFirstObjectByType<TutorialManager>();
-        if (tutorialManager != null)
-        {
-            var step = tutorialManager.tutorialSteps.Find(s =>
-                s.triggerType == TutorialTriggerType.OnFirstKill);
-
-            if (step != null && !tutorialManager.HasCompletedStep(step.stepID))
-            {
-                tutorialManager.TriggerTutorial(step.stepID);
-            }
-        }
-
-        // Check for boss enemy
-        BossEnemy bossEnemy = GetComponent<BossEnemy>();
-        if (bossEnemy != null)
-        {
-            bossEnemy.UpdateObjectiveController();
-        }
 
         onDeath?.Invoke();
 
         if (destroyOnDeath)
-        {
             Destroy(gameObject, destroyDelay);
-        }
     }
 
     void DropBloodOrbs(bool isHeavyAttack)
     {
         if (bloodOrbPrefab == null)
         {
-            Debug.LogWarning($"{gameObject.name} has no blood orb prefab assigned!");
+            Debug.LogWarning($"{gameObject.name} has no bloodOrbPrefab assigned!");
             return;
         }
 
-        // Determine how many orbs to drop
-        int orbCount;
-        if (isHeavyAttack)
-        {
-            orbCount = Random.Range(minHeavyOrbCount, maxHeavyOrbCount + 1);
-        }
-        else
-        {
-            orbCount = Random.Range(minLightOrbCount, maxLightOrbCount + 1);
-        }
+        int orbCount = isHeavyAttack
+            ? Random.Range(minHeavyOrbCount, maxHeavyOrbCount + 1)
+            : Random.Range(minLightOrbCount, maxLightOrbCount + 1);
 
         if (showDebugLogs)
-        {
-            Debug.Log($"Dropping {orbCount} blood orbs ({(isHeavyAttack ? "HEAVY" : "LIGHT")} attack)");
-        }
-
-        // Spawn orbs with explosion physics
-        Vector3 spawnPosition = transform.position + bloodDropOffset;
+            Debug.Log($"{gameObject.name} dropping {orbCount} blood orbs ({(isHeavyAttack ? "HEAVY" : "LIGHT")} attack)");
 
         for (int i = 0; i < orbCount; i++)
         {
+            Vector3 spawnPosition = transform.position + bloodDropOffset;
             GameObject orb = Instantiate(bloodOrbPrefab, spawnPosition, Quaternion.identity);
 
-            // Apply random explosion force
-            Rigidbody rb = orb.GetComponent<Rigidbody>();
-            if (rb != null)
+            BloodOrb bloodOrbScript = orb.GetComponent<BloodOrb>();
+            if (bloodOrbScript != null)
             {
-                Vector3 randomDirection = Random.insideUnitSphere;
-                randomDirection.y = Mathf.Abs(randomDirection.y); // Keep orbs going up/out
-                rb.AddForce(randomDirection * Random.Range(3f, 6f), ForceMode.Impulse);
+                float baseAmount = bloodOrbScript.bloodAmount;
+                float variance = Random.Range(-0.1f, 0.1f);
+                bloodOrbScript.bloodAmount = baseAmount * (1f + variance);
             }
         }
     }
 
-    public bool IsDead()
-    {
-        return isDead;
-    }
-
-    public float GetHealthPercent()
-    {
-        return currentHealth / maxHealth;
-    }
-
-    public float GetHealthPercentage()
-    {
-        return currentHealth / maxHealth;
-    }
-
-    public float GetCurrentHealth()
-    {
-        return currentHealth;
-    }
-
-    public float GetMaxHealth()
-    {
-        return maxHealth;
-    }
+    public bool IsDead() => isDead;
+    public float GetHealthPercent() => currentHealth / maxHealth;
 }

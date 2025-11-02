@@ -99,11 +99,11 @@ public class AttackCollider : MonoBehaviour
         }
 
         // Apply hitstun to enemy
-        var enemyAI = other.GetComponent<EnemyAI>();
-        if (enemyAI != null)
+        var enemyComboSystem = other.GetComponent<EnemyComboSystem>();
+        if (enemyComboSystem != null)
         {
             float stunDuration = isHeavy ? 0.6f : 0.3f;
-            enemyAI.ApplyHitstun(stunDuration);
+            enemyComboSystem.ApplyHitstun(stunDuration);
         }
 
         // Try to apply damage (if object has health component)

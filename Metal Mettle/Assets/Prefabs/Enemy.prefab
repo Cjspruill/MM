@@ -144,6 +144,8 @@ GameObject:
   - component: {fileID: 3472256289490624419}
   - component: {fileID: 1522045067685988089}
   - component: {fileID: 583843717243319587}
+  - component: {fileID: 2403429055278236503}
+  - component: {fileID: 6321741575419540124}
   - component: {fileID: 1463592467131063590}
   - component: {fileID: 3498995452593493565}
   - component: {fileID: 5346031058384078683}
@@ -274,7 +276,8 @@ MonoBehaviour:
   minHeavyOrbCount: 1
   maxHeavyOrbCount: 3
   alertOnDamage: 1
-  damageAnimationChance: 0.1
+  damageAnimationChance: 0.01
+  damageAnimCooldown: 1
   onDamage:
     m_PersistentCalls:
       m_Calls: []
@@ -303,21 +306,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f7a48fa2e6f677479e21454351c8f72, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  attackStateLockTime: 0.5
+  currentState: 0
+  showDebug: 0
+--- !u!114 &2403429055278236503
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8462165098488616464}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90a415c85802bfa4da6d57a7e394671c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyMovement
   player: {fileID: 0}
-  chaseSpeed: 4
+  chaseSpeed: 3.5
   wanderSpeed: 2
-  stoppingDistance: 1
-  detectionRange: 6
+  stoppingDistance: 1.25
+  detectionRange: 7
   viewAngle: 90
   obstacleMask:
     serializedVersion: 2
-    m_Bits: 128
+    m_Bits: 393
   playerMask:
     serializedVersion: 2
     m_Bits: 256
-  alwaysChase: 0
-  memoryDuration: 3
-  visionCheckInterval: 0.2
+  alwaysChase: 1
+  memoryDuration: 5
+  visionCheckInterval: 0.1
   wanderRadius: 10
   minWanderWaitTime: 2
   maxWanderWaitTime: 5
@@ -326,6 +344,22 @@ MonoBehaviour:
   enemyMask:
     serializedVersion: 2
     m_Bits: 8
+  avoidanceRadius: 0.25
+  avoidancePriority: 50
+  disableAvoidanceInCombat: 1
+  showDebug: 0
+--- !u!114 &6321741575419540124
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8462165098488616464}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e636a7a70d5750468ca05eaa0da2dc3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyComboSystem
   attackHitbox: {fileID: 2521031087679563329}
   debugRenderer: {fileID: 2680022142810504579}
   attackRange: 1.5
@@ -333,24 +367,21 @@ MonoBehaviour:
   minComboAttacks: 1
   maxComboAttacks: 3
   timeBetweenAttacks: 0.8
-  comboCooldown: 2
-  attackWindupTime: 0.3
+  comboCooldown: 0.5
+  attackWindupTime: 0.5
   attackTriggers:
   - Attack1
   - Attack2
   - Attack3
   useAnimationEvents: 1
-  useSpawnAnimation: 1
-  spawnAnimationTrigger: ClimbUp
-  undergroundOffset: -2.75
-  spawnRiseDuration: 2.675
   baseHitstunDuration: 0.4
-  stunCooldown: 0.5
-  canBeStunnedDuringAttack: 1
-  avoidanceRadius: 0.5
-  avoidancePriority: 50
-  disableAvoidanceInCombat: 1
-  showDebug: 1
+  stunCooldown: 1
+  canBeStunnedDuringAttack: 0
+  showDebug: 0
+  isAttacking: 0
+  inCombat: 0
+  currentComboStep: 0
+  isStunned: 0
 --- !u!195 &1463592467131063590
 NavMeshAgent:
   m_ObjectHideFlags: 0

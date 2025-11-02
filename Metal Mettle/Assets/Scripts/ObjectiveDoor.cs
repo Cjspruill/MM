@@ -1,10 +1,11 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.Events;
 using System.Collections;
 
 /// <summary>
 /// Door/barrier that unlocks when specific objective tasks are completed
 /// Can slide, rotate, fade out, or simply disable
+/// Can optionally trigger a cutscene camera when unlocked
 /// </summary>
 public class ObjectiveDoor : MonoBehaviour
 {
@@ -32,7 +33,7 @@ public class ObjectiveDoor : MonoBehaviour
     [SerializeField] private float fadeDuration = 2f;
 
     [Header("Visual Feedback")]
-    [SerializeField] private GameObject lockedEffect; // Particle effect or visual indicator
+    [SerializeField] private GameObject lockedEffect;
     [SerializeField] private Material lockedMaterial;
     [SerializeField] private Material unlockedMaterial;
     [SerializeField] private Color lockedColor = Color.red;
@@ -44,6 +45,14 @@ public class ObjectiveDoor : MonoBehaviour
     [SerializeField] private AudioClip unlockSound;
     [SerializeField] private AudioSource audioSource;
 
+    [Header("Cutscene Settings")]
+    [Tooltip("Optional: Cutscene camera controller to focus on the door when it unlocks")]
+    [SerializeField] private CutsceneCameraController cutsceneCamera;
+    [SerializeField] private Transform focusTarget;
+    [SerializeField] private float cutsceneDuration = 3f;
+    [SerializeField] private float cutsceneDistance = 5f;
+    [SerializeField] private float cutsceneAngle = 45f;
+
     [Header("Events")]
     public UnityEvent onDoorUnlock;
 
@@ -52,11 +61,11 @@ public class ObjectiveDoor : MonoBehaviour
 
     public enum DoorType
     {
-        Slide,          // Slides in a direction
-        Rotate,         // Rotates open
-        FadeOut,        // Fades out and disables
-        Disable,        // Instantly disables
-        MoveObject      // Moves to a specific position
+        Slide,
+        Rotate,
+        FadeOut,
+        Disable,
+        MoveObject
     }
 
     private bool isUnlocked = false;
@@ -75,37 +84,30 @@ public class ObjectiveDoor : MonoBehaviour
         doorCollider = GetComponent<Collider>();
 
         if (objectiveController == null)
-        {
             objectiveController = FindObjectOfType<ObjectiveController>();
-        }
 
         if (audioSource == null)
-        {
             audioSource = GetComponent<AudioSource>();
-        }
 
-        // Set initial locked appearance
+        if (cutsceneCamera == null)
+            cutsceneCamera = CutsceneCameraController.Instance;
+
         UpdateLockedAppearance();
 
-        // Show locked effect if assigned
         if (lockedEffect != null)
-        {
             lockedEffect.SetActive(true);
-        }
     }
 
     private void Update()
     {
         if (isUnlocked || isMoving) return;
 
-        // Check objectives periodically
         if (checkOnUpdate && Time.time - lastCheckTime >= checkInterval)
         {
             lastCheckTime = Time.time;
             CheckObjectiveCompletion();
         }
 
-        // Pulse effect when locked
         if (pulseWhenLocked && doorRenderer != null)
         {
             float pulse = Mathf.PingPong(Time.time * pulseSpeed, 1f);
@@ -118,12 +120,7 @@ public class ObjectiveDoor : MonoBehaviour
     {
         if (objectiveController == null) return;
 
-        // Check if the required objective is complete
-        var currentObjective = objectiveController.GetCurrentObjective();
-
-        // Check if we've passed the required objective (it's complete and we moved on)
         bool objectiveComplete = false;
-
         foreach (var objective in GetAllObjectives())
         {
             if (objective.objectiveName == requiredObjectiveName && objective.isComplete)
@@ -134,21 +131,16 @@ public class ObjectiveDoor : MonoBehaviour
         }
 
         if (objectiveComplete)
-        {
             UnlockDoor();
-        }
     }
 
-    // Helper to access objectives list via reflection (since it's private)
     private System.Collections.Generic.List<ObjectiveController.Objective> GetAllObjectives()
     {
         var field = typeof(ObjectiveController).GetField("objectives",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
         if (field != null)
-        {
             return field.GetValue(objectiveController) as System.Collections.Generic.List<ObjectiveController.Objective>;
-        }
 
         return new System.Collections.Generic.List<ObjectiveController.Objective>();
     }
@@ -156,34 +148,43 @@ public class ObjectiveDoor : MonoBehaviour
     public void UnlockDoor()
     {
         if (isUnlocked || isMoving) return;
-
         isUnlocked = true;
 
         if (showDebugLogs)
-        {
             Debug.Log($"ObjectiveDoor: Unlocking door '{gameObject.name}'");
-        }
 
-        // Play unlock sound
         if (audioSource != null && unlockSound != null)
-        {
             audioSource.PlayOneShot(unlockSound);
-        }
 
-        // Disable locked effect
         if (lockedEffect != null)
-        {
             lockedEffect.SetActive(false);
-        }
 
-        // Update material/color
         UpdateUnlockedAppearance();
 
-        // Trigger unlock event
         onDoorUnlock?.Invoke();
 
-        // Perform door action based on type
-        StartCoroutine(PerformDoorAction());
+        // 🎬 Play cutscene if available
+        if (cutsceneCamera != null && !cutsceneCamera.IsInCutscene)
+        {
+            Transform target = focusTarget != null ? focusTarget : transform;
+
+            cutsceneCamera.PlayOrbitCutscene(
+                target,
+                cutsceneDistance,
+                cutsceneAngle,
+                cutsceneDuration,
+                () =>
+                {
+                    if (showDebugLogs)
+                        Debug.Log($"ObjectiveDoor: Cutscene complete for '{gameObject.name}', opening door...");
+                    StartCoroutine(PerformDoorAction());
+                });
+        }
+        else
+        {
+            // No cutscene available, open immediately
+            StartCoroutine(PerformDoorAction());
+        }
     }
 
     private void UpdateLockedAppearance()
@@ -191,13 +192,9 @@ public class ObjectiveDoor : MonoBehaviour
         if (doorRenderer == null) return;
 
         if (lockedMaterial != null)
-        {
             doorRenderer.material = lockedMaterial;
-        }
         else
-        {
             doorRenderer.material.color = lockedColor;
-        }
     }
 
     private void UpdateUnlockedAppearance()
@@ -205,13 +202,9 @@ public class ObjectiveDoor : MonoBehaviour
         if (doorRenderer == null) return;
 
         if (unlockedMaterial != null)
-        {
             doorRenderer.material = unlockedMaterial;
-        }
         else
-        {
             doorRenderer.material.color = unlockedColor;
-        }
     }
 
     private IEnumerator PerformDoorAction()
@@ -223,15 +216,12 @@ public class ObjectiveDoor : MonoBehaviour
             case DoorType.Slide:
                 yield return StartCoroutine(SlideDoor());
                 break;
-
             case DoorType.Rotate:
                 yield return StartCoroutine(RotateDoor());
                 break;
-
             case DoorType.FadeOut:
                 yield return StartCoroutine(FadeDoor());
                 break;
-
             case DoorType.Disable:
                 DisableDoor();
                 break;
@@ -248,20 +238,15 @@ public class ObjectiveDoor : MonoBehaviour
         while (elapsed < slideDuration)
         {
             elapsed += Time.deltaTime;
-            float t = elapsed / slideDuration;
-            t = Mathf.SmoothStep(0f, 1f, t); // Smooth easing
-
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / slideDuration);
             transform.position = Vector3.Lerp(startPosition, targetPosition, t);
             yield return null;
         }
 
         transform.position = targetPosition;
 
-        // Disable collider after slide
         if (doorCollider != null)
-        {
             doorCollider.enabled = false;
-        }
     }
 
     private IEnumerator RotateDoor()
@@ -272,20 +257,15 @@ public class ObjectiveDoor : MonoBehaviour
         while (elapsed < rotateDuration)
         {
             elapsed += Time.deltaTime;
-            float t = elapsed / rotateDuration;
-            t = Mathf.SmoothStep(0f, 1f, t);
-
+            float t = Mathf.SmoothStep(0f, 1f, elapsed / rotateDuration);
             transform.rotation = Quaternion.Lerp(startRotation, targetRotation, t);
             yield return null;
         }
 
         transform.rotation = targetRotation;
 
-        // Disable collider after rotation
         if (doorCollider != null)
-        {
             doorCollider.enabled = false;
-        }
     }
 
     private IEnumerator FadeDoor()
@@ -312,26 +292,17 @@ public class ObjectiveDoor : MonoBehaviour
             yield return null;
         }
 
-        // Fully transparent and disable
         DisableDoor();
     }
 
     private void DisableDoor()
     {
         if (doorCollider != null)
-        {
             doorCollider.enabled = false;
-        }
 
         gameObject.SetActive(false);
     }
 
-    // Manual unlock (can be called from UnityEvents)
-    public void ForceUnlock()
-    {
-        UnlockDoor();
-    }
-
-    // Check if door is unlocked
+    public void ForceUnlock() => UnlockDoor();
     public bool IsUnlocked() => isUnlocked;
 }
