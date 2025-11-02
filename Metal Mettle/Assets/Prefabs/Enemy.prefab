@@ -168,8 +168,8 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 7802590881063902803}
   - {fileID: 6673108230715873480}
+  - {fileID: 7802590881063902803}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &6944261477681175752
@@ -278,7 +278,16 @@ MonoBehaviour:
   onDamage:
     m_PersistentCalls:
       m_Calls: []
+  onLightAttack:
+    m_PersistentCalls:
+      m_Calls: []
+  onHeavyAttack:
+    m_PersistentCalls:
+      m_Calls: []
   onDeath:
+    m_PersistentCalls:
+      m_Calls: []
+  onExecution:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -331,13 +340,17 @@ MonoBehaviour:
   - Attack2
   - Attack3
   useAnimationEvents: 1
+  useSpawnAnimation: 1
+  spawnAnimationTrigger: ClimbUp
+  undergroundOffset: -2.75
+  spawnRiseDuration: 2.675
   baseHitstunDuration: 0.4
   stunCooldown: 0.5
   canBeStunnedDuringAttack: 1
   avoidanceRadius: 0.5
   avoidancePriority: 50
   disableAvoidanceInCombat: 1
-  showDebug: 0
+  showDebug: 1
 --- !u!195 &1463592467131063590
 NavMeshAgent:
   m_ObjectHideFlags: 0
@@ -493,7 +506,8 @@ PrefabInstance:
       propertyPath: m_Name
       value: Minion
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 5866666021909216657, guid: c2b7d87f2e8caf8428ca4d6bfb965849, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
