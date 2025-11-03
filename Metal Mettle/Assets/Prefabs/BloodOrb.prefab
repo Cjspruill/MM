@@ -223,7 +223,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b32795888e2580a4cb1029146305c412, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MaskSiphon
-  maskSiphonRange: 20
+  maskSiphonRange: 50
   maskSiphonSpeed: 4
   maskSiphonDelay: 2
   bloodValue: 1
