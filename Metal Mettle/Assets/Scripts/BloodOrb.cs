@@ -160,7 +160,12 @@ public class BloodOrb : MonoBehaviour
 
         SetupBloodMaterial();
         lastPosition = transform.position;
-        Destroy(gameObject, lifetime);
+        Invoke("DestroyOrb", lifetime);
+    }
+
+    private void DestroyOrb()
+    {
+        Destroy(gameObject);
     }
 
     void SetupBloodMaterial()
@@ -482,6 +487,23 @@ public class BloodOrb : MonoBehaviour
             Gizmos.DrawLine(transform.position, sourcePosition);
             Gizmos.DrawWireSphere(sourcePosition, 0.2f);
         }
+    }
+
+    /// <summary>
+    /// Cancel the automatic lifetime destruction. Called by MaskSiphon.
+    /// </summary>
+    public void CancelLifetimeDestroy()
+    {
+        CancelInvoke("DestroyOrb");
+        // Also store that we've cancelled it so we don't auto-destroy
+    }
+
+    /// <summary>
+    /// Check if this orb is being absorbed by the player
+    /// </summary>
+    public bool IsAbsorbing()
+    {
+        return isAbsorbing;
     }
 }
 

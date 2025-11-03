@@ -6,8 +6,9 @@ public class MaskPieceCollectible : MonoBehaviour
     public string pieceType;
     public bool isAccessible = false;
 
-    [Header("Glass Protection")]
-    [SerializeField] private BreakableGlass protectingGlass;
+    [Header("Feed the Mask Objective")]
+    [SerializeField] private MaskFeeder maskFeeder;
+    [SerializeField] private bool requiresMaskFed = true;
 
     [Header("Visual Feedback")]
     [SerializeField] private float rotationSpeed = 50f;
@@ -25,20 +26,37 @@ public class MaskPieceCollectible : MonoBehaviour
     {
         startPosition = transform.position;
 
-        if (showDebugLogs)
+        // Auto-find mask feeder if not assigned
+        if (maskFeeder == null && requiresMaskFed)
         {
-            Debug.Log($"MaskPieceCollectible '{pieceType}' initialized. Accessible: {isAccessible}. Has glass: {protectingGlass != null}");
+            maskFeeder = FindFirstObjectByType<MaskFeeder>();
         }
 
-        // If there's glass, register with it
-        if (protectingGlass != null)
+        if (showDebugLogs)
         {
-            protectingGlass.OnGlassBroken += MakeAccessible;
+            Debug.Log($"MaskPieceCollectible '{pieceType}' initialized. Accessible: {isAccessible}. Requires mask fed: {requiresMaskFed}");
+        }
+
+        // If we require the mask to be fed, subscribe to its completion event
+        if (requiresMaskFed && maskFeeder != null)
+        {
+            maskFeeder.onMaskFull.AddListener(MakeAccessible);
 
             if (showDebugLogs)
             {
-                Debug.Log($"'{pieceType}' subscribed to glass break event");
+                Debug.Log($"'{pieceType}' subscribed to mask full event");
             }
+
+            // Check if mask is already full
+            if (maskFeeder.IsFull())
+            {
+                MakeAccessible();
+            }
+        }
+        else if (!requiresMaskFed)
+        {
+            // If we don't require mask feeding, make it accessible immediately
+            isAccessible = true;
         }
 
         // Set initial glow state
@@ -50,12 +68,14 @@ public class MaskPieceCollectible : MonoBehaviour
 
     private void Update()
     {
+        // Rotation
         transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
 
+        // Bobbing (commented out in your original)
         bobTimer += Time.deltaTime * bobSpeed;
         Vector3 newPosition = startPosition;
         newPosition.y += Mathf.Sin(bobTimer) * bobHeight;
-       // transform.position = newPosition;
+        // transform.position = newPosition;
     }
 
     private void MakeAccessible()
@@ -75,9 +95,9 @@ public class MaskPieceCollectible : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (protectingGlass != null)
+        if (requiresMaskFed && maskFeeder != null)
         {
-            protectingGlass.OnGlassBroken -= MakeAccessible;
+            maskFeeder.onMaskFull.RemoveListener(MakeAccessible);
         }
     }
 }
