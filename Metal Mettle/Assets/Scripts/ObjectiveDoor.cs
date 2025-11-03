@@ -52,6 +52,7 @@ public class ObjectiveDoor : MonoBehaviour
     [SerializeField] private float cutsceneDuration = 3f;
     [SerializeField] private float cutsceneDistance = 5f;
     [SerializeField] private float cutsceneAngle = 45f;
+    [SerializeField] private float cutsceneHeight = 2f;
 
     [Header("Events")]
     public UnityEvent onDoorUnlock;
@@ -168,16 +169,24 @@ public class ObjectiveDoor : MonoBehaviour
         {
             Transform target = focusTarget != null ? focusTarget : transform;
 
-            cutsceneCamera.PlayOrbitCutscene(
-                target,
-                cutsceneDistance,
-                cutsceneAngle,
+            // Calculate camera position with height
+            Vector3 offset = Quaternion.Euler(0, cutsceneAngle, 0) * (Vector3.back * cutsceneDistance);
+            offset.y += cutsceneHeight; // Add height offset
+            Vector3 cameraPosition = target.position + offset;
+            Quaternion cameraRotation = Quaternion.LookRotation(target.position - cameraPosition);
+
+            // Start the door opening immediately
+            StartCoroutine(PerformDoorAction());
+
+            // Play cutscene using custom position
+            cutsceneCamera.PlayCustomCutscene(
+                cameraPosition,
+                cameraRotation,
                 cutsceneDuration,
                 () =>
                 {
                     if (showDebugLogs)
-                        Debug.Log($"ObjectiveDoor: Cutscene complete for '{gameObject.name}', opening door...");
-                    StartCoroutine(PerformDoorAction());
+                        Debug.Log($"ObjectiveDoor: Cutscene complete for '{gameObject.name}'");
                 });
         }
         else
@@ -305,4 +314,76 @@ public class ObjectiveDoor : MonoBehaviour
 
     public void ForceUnlock() => UnlockDoor();
     public bool IsUnlocked() => isUnlocked;
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!Application.isPlaying)
+        {
+            // Determine the focus target
+            Transform target = focusTarget != null ? focusTarget : transform;
+
+            // Calculate camera position with height
+            Vector3 offset = Quaternion.Euler(0, cutsceneAngle, 0) * (Vector3.back * cutsceneDistance);
+            offset.y += cutsceneHeight; // Add height offset
+            Vector3 cameraPosition = target.position + offset;
+            Quaternion cameraRotation = Quaternion.LookRotation(target.position - cameraPosition);
+
+            // Draw the camera position
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(cameraPosition, 0.5f);
+
+            // Draw camera axis lines to show orientation
+            Gizmos.color = Color.red;
+            Gizmos.DrawRay(cameraPosition, cameraRotation * Vector3.right * 0.5f);
+            Gizmos.color = Color.green;
+            Gizmos.DrawRay(cameraPosition, cameraRotation * Vector3.up * 0.5f);
+            Gizmos.color = Color.blue;
+            Gizmos.DrawRay(cameraPosition, cameraRotation * Vector3.forward * 0.5f);
+
+            // Draw line from camera to focus target
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(cameraPosition, target.position);
+
+            // Draw the focus target
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(target.position, 0.3f);
+
+            // Draw the orbit circle at the specified height
+            Gizmos.color = new Color(0, 1, 1, 0.3f);
+            DrawOrbitCircleWithHeight(target.position, cutsceneDistance, cutsceneHeight);
+
+            // Draw height indicator (vertical line from base orbit to camera height)
+            Vector3 baseOrbitPoint = target.position + Quaternion.Euler(0, cutsceneAngle, 0) * (Vector3.back * cutsceneDistance);
+            Gizmos.color = Color.white;
+            Gizmos.DrawLine(baseOrbitPoint, cameraPosition);
+
+            // Draw viewing frustum cone
+            Gizmos.color = Color.magenta;
+            Vector3 lookDirection = (target.position - cameraPosition).normalized;
+            Gizmos.DrawRay(cameraPosition, lookDirection * cutsceneDistance);
+
+#if UNITY_EDITOR
+            // Label the camera position with angle and height
+            UnityEditor.Handles.Label(cameraPosition, $"Camera ({cutsceneAngle}°, {cutsceneHeight}m)");
+#endif
+        }
+    }
+
+    private void DrawOrbitCircleWithHeight(Vector3 center, float radius, float height)
+    {
+        int segments = 32;
+        // Draw orbit circle at the elevated height
+        Vector3 centerAtHeight = center + Vector3.up * height;
+        Vector3 previousPoint = centerAtHeight + Quaternion.Euler(0, 0, 0) * (Vector3.back * radius);
+
+        for (int i = 1; i <= segments; i++)
+        {
+            float angle = (i / (float)segments) * 360f;
+            Vector3 offset = Quaternion.Euler(0, angle, 0) * (Vector3.back * radius);
+            Vector3 newPoint = centerAtHeight + offset;
+
+            Gizmos.DrawLine(previousPoint, newPoint);
+            previousPoint = newPoint;
+        }
+    }
 }
