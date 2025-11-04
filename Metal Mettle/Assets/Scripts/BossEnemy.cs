@@ -8,7 +8,7 @@ public class BossEnemy : MonoBehaviour
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        
+        objectiveController = FindFirstObjectByType<ObjectiveController>();
     }
 
     // Update is called once per frame

@@ -92,6 +92,8 @@ public class Health : MonoBehaviour
         // Check death
         if (currentHealth <= 0)
             Die(isHeavyAttack);
+
+      
     }
 
     private void TryPlayDamageAnimation(bool isHeavyAttack)
@@ -163,8 +165,16 @@ public class Health : MonoBehaviour
 
         onDeath?.Invoke();
 
+        BossEnemy bossEnemy = GetComponent<BossEnemy>();
+        if (bossEnemy != null)
+        {
+            bossEnemy.UpdateObjectiveController();
+        }
+
         if (destroyOnDeath)
             Destroy(gameObject, destroyDelay);
+
+
     }
 
     void DropBloodOrbs(bool isHeavyAttack)
