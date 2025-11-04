@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.AI;
+using UnityEngine.UIElements;
 
 /// <summary>
 /// Handles all enemy movement: wandering, chasing, NavMeshAgent control
@@ -230,7 +231,7 @@ public class EnemyMovement : MonoBehaviour
         }
 
         canSeePlayer = false;
-        isChasing = false;
+        // ❌ REMOVED: isChasing = false;  (Don't reset this every frame!)
 
         if (distanceToPlayer > detectionRange)
         {
@@ -239,6 +240,12 @@ public class EnemyMovement : MonoBehaviour
                 lastSeenTime = Time.time;
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
+            }
+
+            // Only stop chasing if memory has expired
+            if (Time.time - lastSeenTime > memoryDuration)
+            {
+                isChasing = false;
             }
             return;
         }
@@ -254,6 +261,12 @@ public class EnemyMovement : MonoBehaviour
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
             }
+
+            // Only stop chasing if memory has expired
+            if (Time.time - lastSeenTime > memoryDuration)
+            {
+                isChasing = false;
+            }
             return;
         }
 
@@ -266,7 +279,7 @@ public class EnemyMovement : MonoBehaviour
             if (hit.transform.CompareTag("Player"))
             {
                 canSeePlayer = true;
-                isChasing = true;
+                isChasing = true;  // ✅ Start chasing when spotted
                 lastSeenTime = Time.time;
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
@@ -279,6 +292,12 @@ public class EnemyMovement : MonoBehaviour
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
             }
+        }
+
+        // Check if memory has expired (not seen player for too long)
+        if (Time.time - lastSeenTime > memoryDuration)
+        {
+            isChasing = false;
         }
 
         if (showDebug)

@@ -333,7 +333,7 @@ MonoBehaviour:
   playerMask:
     serializedVersion: 2
     m_Bits: 256
-  alwaysChase: 1
+  alwaysChase: 0
   memoryDuration: 5
   visionCheckInterval: 0.1
   wanderRadius: 10
