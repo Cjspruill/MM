@@ -127,18 +127,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   bloodAmount: 3
-  pulseSpeed: 2
-  pulseScale: 0.2
   orbColor: {r: 1, g: 0, b: 0, a: 1}
+  minSize: 0.05
+  maxSize: 0.3
+  pulseScale: 0.2
+  pulseSpeed: 2
   useEmission: 0
   emissionIntensity: 0.8
-  minSize: 0.05
-  maxSize: 0.25
-  viscosity: 0.4
   bloodDensity: 1.5
   airDrag: 1.5
   surfaceStickiness: 0.3
+  viscosity: 0.4
   enableDripTrail: 1
+  dripletPrefab: {fileID: 0}
+  dripletSize: 0.2
   spawnSplatterOnImpact: 1
   minImpactVelocity: 2
   splatOnLayers:
@@ -174,12 +176,11 @@ MonoBehaviour:
   siphonStrandCount: 1
   useLegacySiphonEffect: 0
   absorbBoolName: IsAbsorbing
-  forceImmediateTransition: 1
-  absorbStateName: Absorb
-  crossfadeDuration: 0.15
-  useUpperBodyWhenMoving: 1
+  absorbUpperBodyBoolName: IsAbsorbingUpperBody
   upperBodyLayerIndex: 1
   fullBodyLayerIndex: 0
+  useUpperBodyWhenMoving: 1
+  layerWeightFadeSpeed: 5
   explosionForce: 100
   upwardForce: 200
   randomSpread: 50
