@@ -6,12 +6,12 @@ using TMPro;
 /// Optional UI component to display "Feed the Mask" objective progress.
 /// Shows blood collected out of required amount.
 /// Can be integrated with ObjectiveUI or used standalone.
+/// NOW SUPPORTS MULTIPLE MASK FEEDERS - will display whichever one is active.
 /// </summary>
 public class MaskFeedingUI : MonoBehaviour
 {
     [Header("References")]
-    [SerializeField] private MaskFeeder maskFeeder;
-    [SerializeField] private MaskFeedingObjectiveTracking tracker;
+    [SerializeField] private MaskFeeder maskFeeder; // This can be left null - will be set dynamically
 
     [Header("UI Elements")]
     [SerializeField] private GameObject uiPanel;
@@ -36,6 +36,9 @@ public class MaskFeedingUI : MonoBehaviour
     [SerializeField] private float pulseDuration = 0.3f;
     [SerializeField] private float pulseScale = 1.1f;
 
+    [Header("Debug")]
+    [SerializeField] private bool showDebugLogs = false;
+
     private float currentDisplayProgress = 0f;
     private float targetProgress = 0f;
     private bool isPulsing = false;
@@ -44,23 +47,8 @@ public class MaskFeedingUI : MonoBehaviour
 
     private void Start()
     {
-        // Auto-find references
-        if (maskFeeder == null)
-        {
-            maskFeeder = FindFirstObjectByType<MaskFeeder>();
-        }
-
-        if (tracker == null)
-        {
-            tracker = FindFirstObjectByType<MaskFeedingObjectiveTracking>();
-        }
-
-        if (maskFeeder == null)
-        {
-            Debug.LogWarning("MaskFeedingUI: No MaskFeeder found!");
-            gameObject.SetActive(false);
-            return;
-        }
+        // NOTE: We don't auto-find maskFeeder here anymore
+        // It will be set dynamically when MaskFeeders call SetActiveMaskFeeder()
 
         // Set up UI
         if (titleText != null)
@@ -79,16 +67,30 @@ public class MaskFeedingUI : MonoBehaviour
 
     private void Update()
     {
-        if (maskFeeder == null) return;
+        if (maskFeeder == null)
+        {
+            // No active mask feeder - hide UI
+            if (uiPanel != null && uiPanel.activeSelf)
+            {
+                uiPanel.SetActive(false);
+            }
+            return;
+        }
 
         // Check if we should show the UI
-        if (showOnlyWhenActive && tracker != null)
+        if (showOnlyWhenActive)
         {
-            bool isActive = tracker.enabled && tracker.GetProgress() < 100f;
+            // Show UI when mask feeder is active and not complete
+            bool isActive = maskFeeder.IsObjectiveActive() && !maskFeeder.IsComplete();
             if (uiPanel != null && uiPanel.activeSelf != isActive)
             {
                 uiPanel.SetActive(isActive);
             }
+        }
+        else if (uiPanel != null && !uiPanel.activeSelf)
+        {
+            // If not using showOnlyWhenActive, just show it when we have an active feeder
+            uiPanel.SetActive(true);
         }
 
         // Update progress
@@ -138,6 +140,8 @@ public class MaskFeedingUI : MonoBehaviour
 
     private void UpdateUI()
     {
+        if (maskFeeder == null) return;
+
         // Update slider
         if (progressSlider != null)
         {
@@ -159,6 +163,8 @@ public class MaskFeedingUI : MonoBehaviour
 
     private string GetProgressText()
     {
+        if (maskFeeder == null) return "";
+
         string text = "";
 
         if (showFraction)
@@ -197,6 +203,52 @@ public class MaskFeedingUI : MonoBehaviour
         pulseTimer = 0f;
     }
 
+    #region Public Methods for MaskFeeder to call
+
+    /// <summary>
+    /// Called by MaskFeeders when they become active (OnEnable)
+    /// This allows the UI to display the correct active mask feeder
+    /// </summary>
+    public void SetActiveMaskFeeder(MaskFeeder feeder)
+    {
+        if (maskFeeder != feeder)
+        {
+            maskFeeder = feeder;
+
+            if (showDebugLogs)
+            {
+                if (feeder != null)
+                {
+                    Debug.Log($"MaskFeedingUI: Now tracking {feeder.gameObject.name}");
+                }
+                else
+                {
+                    Debug.Log($"MaskFeedingUI: No longer tracking any mask feeder");
+                }
+            }
+
+            // Reset animation state when switching
+            currentDisplayProgress = feeder != null ? feeder.GetProgress() / 100f : 0f;
+            targetProgress = currentDisplayProgress;
+            isPulsing = false;
+
+            // Update immediately
+            UpdateUI();
+        }
+    }
+
+    /// <summary>
+    /// Get the currently active mask feeder
+    /// </summary>
+    public MaskFeeder GetActiveMaskFeeder()
+    {
+        return maskFeeder;
+    }
+
+    #endregion
+
+    #region Manual Control Methods
+
     /// <summary>
     /// Manually show the UI panel
     /// </summary>
@@ -218,4 +270,6 @@ public class MaskFeedingUI : MonoBehaviour
             uiPanel.SetActive(false);
         }
     }
+
+    #endregion
 }

@@ -3,17 +3,18 @@ using TMPro;
 using System.Collections.Generic;
 
 /// <summary>
-/// Detailed UI that shows each individual task with checkmarks
+/// Detailed UI that shows each individual task with checkmarks AND progress numbers
 /// Example display:
 ///   Tutorial Combat (2/3)
-///   ✓ Land 10 Attacks
-///   ✓ Gain 10 Blood
-///   ○ Kill Enemy
+///   ✓ Land 10 Attacks (10/10)
+///   ✓ Gain 10 Blood (10.0/10.0)
+///   ○ Kill Enemy (0/1)
 /// </summary>
 public class DetailedObjectiveUI : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private ObjectiveController objectiveController;
+    [SerializeField] private ObjectiveManager objectiveManager; // NEW: For progress tracking
 
     [Header("UI Text Elements")]
     [SerializeField] private TextMeshProUGUI objectiveTitleText;
@@ -33,6 +34,7 @@ public class DetailedObjectiveUI : MonoBehaviour
     [SerializeField] private Color completeTaskColor = new Color(0.5f, 0.5f, 0.5f); // Gray
     [SerializeField] private Color incompleteTaskColor = Color.white;
     [SerializeField] private bool strikethroughCompleted = true;
+    [SerializeField] private bool showProgressNumbers = true; // NEW: Toggle progress display
 
     [Header("Animation")]
     [SerializeField] private bool animateTaskCompletion = true;
@@ -51,6 +53,12 @@ public class DetailedObjectiveUI : MonoBehaviour
         if (objectiveController == null)
         {
             objectiveController = FindObjectOfType<ObjectiveController>();
+        }
+
+        // NEW: Auto-find ObjectiveManager
+        if (objectiveManager == null)
+        {
+            objectiveManager = FindObjectOfType<ObjectiveManager>();
         }
 
         // Subscribe to objective controller events
@@ -163,6 +171,16 @@ public class DetailedObjectiveUI : MonoBehaviour
         string prefix = task.isComplete ? completePrefix : incompletePrefix;
         string taskText = task.taskName;
 
+        // NEW: Add progress numbers if enabled
+        if (showProgressNumbers && objectiveManager != null)
+        {
+            string progressString = GetTaskProgress(task.taskName);
+            if (!string.IsNullOrEmpty(progressString))
+            {
+                taskText += $" {progressString}";
+            }
+        }
+
         // Add strikethrough if completed
         if (strikethroughCompleted && task.isComplete)
         {
@@ -173,6 +191,74 @@ public class DetailedObjectiveUI : MonoBehaviour
 
         // Set color
         textElement.color = task.isComplete ? completeTaskColor : incompleteTaskColor;
+    }
+
+    /// <summary>
+    /// NEW: Get progress string for a specific task based on its name
+    /// Returns format like "(7/10)" or "(5.0/10.0)" or empty string if no progress tracking
+    /// </summary>
+    private string GetTaskProgress(string taskName)
+    {
+        if (objectiveManager == null) return "";
+
+        string lowerTaskName = taskName.ToLower();
+
+        // Check for kill tasks
+        if (lowerTaskName.Contains("kill") && !lowerTaskName.Contains("execution"))
+        {
+            int current = objectiveManager.GetCurrentKills();
+            int required = objectiveManager.GetKillsRequired();
+            if (required > 0)
+                return $"({current}/{required})";
+        }
+
+        // Check for execution tasks
+        if (lowerTaskName.Contains("execution") || lowerTaskName.Contains("execute"))
+        {
+            int current = objectiveManager.GetCurrentExecutions();
+            int required = objectiveManager.GetExecutionsRequired();
+            if (required > 0)
+                return $"({current}/{required})";
+        }
+
+        // Check for hit/attack tasks (general)
+        if ((lowerTaskName.Contains("hit") || lowerTaskName.Contains("land")) &&
+            !lowerTaskName.Contains("light") && !lowerTaskName.Contains("heavy"))
+        {
+            int current = objectiveManager.GetCurrentHits();
+            int required = objectiveManager.GetHitsRequired();
+            if (required > 0)
+                return $"({current}/{required})";
+        }
+
+        // Check for light attack tasks
+        if (lowerTaskName.Contains("light"))
+        {
+            int current = objectiveManager.GetCurrentLightAttacks();
+            int required = objectiveManager.GetLightAttacksRequired();
+            if (required > 0)
+                return $"({current}/{required})";
+        }
+
+        // Check for heavy attack tasks
+        if (lowerTaskName.Contains("heavy"))
+        {
+            int current = objectiveManager.GetCurrentHeavyAttacks();
+            int required = objectiveManager.GetHeavyAttacksRequired();
+            if (required > 0)
+                return $"({current}/{required})";
+        }
+
+        // Check for blood tasks
+        if (lowerTaskName.Contains("blood"))
+        {
+            float current = objectiveManager.GetCurrentBloodGained();
+            float required = objectiveManager.GetBloodRequired();
+            if (required > 0)
+                return $"({current:F1}/{required:F1})";
+        }
+
+        return "";
     }
 
     private void DisplayAllComplete()
@@ -188,7 +274,7 @@ public class DetailedObjectiveUI : MonoBehaviour
             objectiveProgressText.text = "";
         }
 
-        // Clear all tasks
+        // Clear all task displays
         foreach (var item in spawnedTaskItems)
         {
             Destroy(item);
@@ -198,7 +284,9 @@ public class DetailedObjectiveUI : MonoBehaviour
         foreach (var text in manualTaskTexts)
         {
             if (text != null)
+            {
                 text.gameObject.SetActive(false);
+            }
         }
     }
 
@@ -206,7 +294,7 @@ public class DetailedObjectiveUI : MonoBehaviour
     {
         if (animateTaskCompletion)
         {
-            AnimateTaskCompletion();
+            // Optional: Add animation here
         }
 
         UpdateDisplay();
@@ -217,62 +305,8 @@ public class DetailedObjectiveUI : MonoBehaviour
         UpdateDisplay();
     }
 
-    private void AnimateTaskCompletion()
-    {
-        // Find the most recently completed task and animate it
-        // This is a simple pulse effect
-        if (manualTaskTexts.Count > 0)
-        {
-            var currentObjective = objectiveController.GetCurrentObjective();
-            if (currentObjective == null) return;
-
-            for (int i = 0; i < currentObjective.tasks.Count && i < manualTaskTexts.Count; i++)
-            {
-                if (currentObjective.tasks[i].isComplete && manualTaskTexts[i] != null)
-                {
-                    StartCoroutine(PulseText(manualTaskTexts[i]));
-                }
-            }
-        }
-    }
-
-    private System.Collections.IEnumerator PulseText(TextMeshProUGUI textElement)
-    {
-        Vector3 originalScale = textElement.transform.localScale;
-        float elapsed = 0f;
-
-        // Scale up
-        while (elapsed < taskAnimDuration / 2f)
-        {
-            elapsed += Time.deltaTime;
-            float t = elapsed / (taskAnimDuration / 2f);
-            textElement.transform.localScale = Vector3.Lerp(originalScale, originalScale * taskCompleteScale, t);
-            yield return null;
-        }
-
-        elapsed = 0f;
-
-        // Scale back down
-        while (elapsed < taskAnimDuration / 2f)
-        {
-            elapsed += Time.deltaTime;
-            float t = elapsed / (taskAnimDuration / 2f);
-            textElement.transform.localScale = Vector3.Lerp(originalScale * taskCompleteScale, originalScale, t);
-            yield return null;
-        }
-
-        textElement.transform.localScale = originalScale;
-    }
-
-    // Public method to force update
-    public void ForceUpdate()
-    {
-        UpdateDisplay();
-    }
-
     private void OnDestroy()
     {
-        // Unsubscribe from events
         if (objectiveController != null)
         {
             objectiveController.onTaskCompleted.RemoveListener(OnTaskCompleted);

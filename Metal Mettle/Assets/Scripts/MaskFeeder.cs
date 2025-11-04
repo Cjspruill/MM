@@ -50,6 +50,9 @@ public class MaskFeeder : MonoBehaviour
     private bool objectiveComplete = false;
     private bool isObjectiveActive = false;
 
+    // Static reference to the UI (shared across all MaskFeeders)
+    private static MaskFeedingUI sharedUI;
+
     private void Start()
     {
         // Find objective controller
@@ -57,6 +60,16 @@ public class MaskFeeder : MonoBehaviour
         if (objectiveController == null && showDebugLogs)
         {
             Debug.LogWarning("MaskFeeder: No ObjectiveController found in scene!");
+        }
+
+        // Find the shared UI if we haven't already
+        if (sharedUI == null)
+        {
+            sharedUI = FindFirstObjectByType<MaskFeedingUI>();
+            if (sharedUI == null && showDebugLogs)
+            {
+                Debug.LogWarning("MaskFeeder: No MaskFeedingUI found in scene!");
+            }
         }
 
         // Subscribe to objective changes
@@ -91,6 +104,32 @@ public class MaskFeeder : MonoBehaviour
         }
 
         UpdateVisuals();
+    }
+
+    private void OnEnable()
+    {
+        // When this MaskFeeder is enabled, notify the UI
+        if (sharedUI != null)
+        {
+            sharedUI.SetActiveMaskFeeder(this);
+            if (showDebugLogs)
+            {
+                Debug.Log($"MaskFeeder: Registered with UI on enable");
+            }
+        }
+    }
+
+    private void OnDisable()
+    {
+        // When this MaskFeeder is disabled, unregister from UI if it's the current one
+        if (sharedUI != null && sharedUI.GetActiveMaskFeeder() == this)
+        {
+            sharedUI.SetActiveMaskFeeder(null);
+            if (showDebugLogs)
+            {
+                Debug.Log($"MaskFeeder: Unregistered from UI on disable");
+            }
+        }
     }
 
     private void OnDestroy()
@@ -239,82 +278,23 @@ public class MaskFeeder : MonoBehaviour
             transform.localScale = Vector3.Lerp(startScale, maxScale, progress);
         }
 
-        // Emission/Glow
+        // Emission glow
         if (maskRenderer != null && propertyBlock != null)
         {
             Color emissionColor = Color.Lerp(startEmissionColor, maxEmissionColor, progress);
-            maskRenderer.GetPropertyBlock(propertyBlock);
             propertyBlock.SetColor(emissiveColorProperty, emissionColor);
             maskRenderer.SetPropertyBlock(propertyBlock);
         }
     }
 
-    /// <summary>
-    /// Get current progress as a percentage (0-100)
-    /// </summary>
-    public float GetProgress()
-    {
-        return (currentBlood / bloodRequired) * 100f;
-    }
+    #region Public Getters
 
-    /// <summary>
-    /// Get current blood amount
-    /// </summary>
-    public float GetCurrentBlood()
-    {
-        return currentBlood;
-    }
+    public float GetCurrentBlood() => currentBlood;
+    public float GetRequiredBlood() => bloodRequired;
+    public float GetProgress() => (currentBlood / bloodRequired) * 100f;
+    public bool IsFull() => currentBlood >= bloodRequired;
+    public bool IsObjectiveActive() => isObjectiveActive;
+    public bool IsComplete() => objectiveComplete;
 
-    /// <summary>
-    /// Get required blood amount
-    /// </summary>
-    public float GetRequiredBlood()
-    {
-        return bloodRequired;
-    }
-
-    /// <summary>
-    /// Check if mask is full
-    /// </summary>
-    public bool IsFull()
-    {
-        return currentBlood >= bloodRequired;
-    }
-
-    /// <summary>
-    /// Check if objective is currently active
-    /// </summary>
-    public bool IsObjectiveActive()
-    {
-        return isObjectiveActive;
-    }
-
-    /// <summary>
-    /// Reset the mask (for testing or objective restart)
-    /// </summary>
-    public void ResetMask()
-    {
-        currentBlood = 0f;
-        objectiveComplete = false;
-        UpdateVisuals();
-
-        if (showDebugLogs)
-        {
-            Debug.Log("MaskFeeder: Reset");
-        }
-    }
-
-    private void OnDrawGizmos()
-    {
-        // Draw sphere to visualize mask position
-        Gizmos.color = Color.magenta;
-        Gizmos.DrawWireSphere(transform.position, 0.5f);
-    }
-
-    private void OnDrawGizmosSelected()
-    {
-        // Draw siphon range (matching MaskSiphon's maskSiphonRange)
-        Gizmos.color = new Color(1f, 0f, 1f, 0.3f);
-        Gizmos.DrawWireSphere(transform.position, 15f); // Default maskSiphonRange
-    }
+    #endregion
 }

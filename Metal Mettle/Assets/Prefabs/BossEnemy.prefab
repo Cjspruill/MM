@@ -149,9 +149,11 @@ GameObject:
   - component: {fileID: 5346031058384078683}
   - component: {fileID: 3820030510826889580}
   - component: {fileID: 7192088731192683702}
-  m_Layer: 3
+  - component: {fileID: 8816593324254340924}
+  - component: {fileID: 7199928193409652155}
+  m_Layer: 12
   m_Name: BossEnemy
-  m_TagString: Enemy
+  m_TagString: Boss
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -246,7 +248,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 0.75, y: 2, z: 0.75}
   m_Center: {x: 0, y: 0.5, z: 0}
@@ -276,10 +278,20 @@ MonoBehaviour:
   maxHeavyOrbCount: 3
   alertOnDamage: 1
   damageAnimationChance: 0.1
+  damageAnimCooldown: 0.5
   onDamage:
     m_PersistentCalls:
       m_Calls: []
+  onLightAttack:
+    m_PersistentCalls:
+      m_Calls: []
+  onHeavyAttack:
+    m_PersistentCalls:
+      m_Calls: []
   onDeath:
+    m_PersistentCalls:
+      m_Calls: []
+  onExecution:
     m_PersistentCalls:
       m_Calls: []
   showDebugLogs: 1
@@ -295,49 +307,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f7a48fa2e6f677479e21454351c8f72, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  player: {fileID: 0}
-  chaseSpeed: 5
-  wanderSpeed: 2
-  stoppingDistance: 1
-  detectionRange: 15
-  viewAngle: 90
-  obstacleMask:
-    serializedVersion: 2
-    m_Bits: 128
-  playerMask:
-    serializedVersion: 2
-    m_Bits: 256
-  alwaysChase: 0
-  memoryDuration: 5
-  visionCheckInterval: 0.2
-  wanderRadius: 10
-  minWanderWaitTime: 2
-  maxWanderWaitTime: 5
-  wanderPointReachThreshold: 1
-  alertRadius: 7
-  enemyMask:
-    serializedVersion: 2
-    m_Bits: 8
-  attackHitbox: {fileID: 2521031087679563329}
-  debugRenderer: {fileID: 2680022142810504579}
-  attackRange: 1.75
-  attackDuration: 0.3
-  minComboAttacks: 1
-  maxComboAttacks: 4
-  timeBetweenAttacks: 0.5
-  comboCooldown: 2
-  attackWindupTime: 0.3
-  attackTriggers:
-  - Attack1
-  - Attack2
-  - Attack3
-  useAnimationEvents: 1
-  baseHitstunDuration: 0.4
-  stunCooldown: 0.5
-  canBeStunnedDuringAttack: 0
-  avoidanceRadius: 0.5
-  avoidancePriority: 50
-  disableAvoidanceInCombat: 1
+  attackStateLockTime: 0.5
+  currentState: 0
   showDebug: 0
 --- !u!195 &1463592467131063590
 NavMeshAgent:
@@ -456,6 +427,80 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BossEnemy
   objectiveController: {fileID: 0}
   taskToComplete: Defeat Boss Enemy
+--- !u!114 &8816593324254340924
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8462165098488616464}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8e636a7a70d5750468ca05eaa0da2dc3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyComboSystem
+  attackHitbox: {fileID: 2521031087679563329}
+  debugRenderer: {fileID: 2680022142810504579}
+  attackRange: 1.75
+  attackDuration: 0.3
+  minComboAttacks: 2
+  maxComboAttacks: 5
+  timeBetweenAttacks: 0.5
+  comboCooldown: 0.5
+  attackWindupTime: 0.5
+  attackTriggers:
+  - Attack1
+  - Attack2
+  - Attack3
+  - Attack4
+  useAnimationEvents: 1
+  baseHitstunDuration: 0.4
+  stunCooldown: 1
+  canBeStunnedDuringAttack: 0
+  showDebug: 0
+  isAttacking: 0
+  inCombat: 0
+  currentComboStep: 0
+  isStunned: 0
+--- !u!114 &7199928193409652155
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8462165098488616464}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90a415c85802bfa4da6d57a7e394671c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyMovement
+  player: {fileID: 0}
+  chaseSpeed: 3.5
+  wanderSpeed: 2
+  stoppingDistance: 1.5
+  detectionRange: 15
+  viewAngle: 90
+  obstacleMask:
+    serializedVersion: 2
+    m_Bits: 393
+  playerMask:
+    serializedVersion: 2
+    m_Bits: 256
+  alwaysChase: 1
+  memoryDuration: 10
+  visionCheckInterval: 0.2
+  wanderRadius: 10
+  minWanderWaitTime: 2
+  maxWanderWaitTime: 5
+  wanderPointReachThreshold: 1
+  alertRadius: 5
+  enemyMask:
+    serializedVersion: 2
+    m_Bits: 4104
+  avoidanceRadius: 0.25
+  avoidancePriority: 50
+  disableAvoidanceInCombat: 1
+  showDebug: 1
 --- !u!1001 &6562059022801010467
 PrefabInstance:
   m_ObjectHideFlags: 0
