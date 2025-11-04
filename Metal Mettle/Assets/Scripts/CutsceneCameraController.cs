@@ -6,25 +6,30 @@ using System.Collections;
 /// Modular cutscene camera controller that can be triggered from any script.
 /// Supports orbit, pan, zoom, and custom transforms.
 /// Smoothly transitions to/from player camera control.
+/// NOW BROADCASTS TO ALL ICutsceneControllable OBJECTS (including enemies)!
 /// </summary>
 public class CutsceneCameraController : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Camera mainCamera;
-    [SerializeField] private Transform playerCameraRig; // Your existing camera rig
+    [SerializeField] private Transform playerCameraRig;
 
     [Header("Transition Settings")]
     [SerializeField] private float transitionDuration = 1f;
     [SerializeField] private AnimationCurve transitionCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
 
     [Header("Player Control")]
-    [SerializeField] private MonoBehaviour playerCameraScript; // Reference to your camera control script
-    [SerializeField] private PlayerController playerMovementScript; // Optional: player movement script
-    [SerializeField] private bool disablePlayerInput = true; // Also disable PlayerInput component
-    [SerializeField] private bool pauseTime = false; // Optionally pause time during cutscene
+    [SerializeField] private MonoBehaviour playerCameraScript;
+    [SerializeField] private PlayerController playerMovementScript;
+    [SerializeField] private bool disablePlayerInput = true;
+    [SerializeField] private bool pauseTime = false;
 
-    private PlayerInput playerInput; // Cache PlayerInput if it exists
-    private bool wasPlayerInputEnabled = false; // Track original state
+    [Header("Broadcasting")]
+    [SerializeField] private bool broadcastToAllControllables = true;
+    [SerializeField] private bool showBroadcastDebug = true;
+
+    private PlayerInput playerInput;
+    private bool wasPlayerInputEnabled = false;
 
     // State tracking
     private bool isInCutscene = false;
@@ -55,7 +60,6 @@ public class CutsceneCameraController : MonoBehaviour
         if (playerCameraRig == null)
             playerCameraRig = mainCamera.transform.parent;
 
-        // Try to find PlayerInput component
         if (disablePlayerInput)
         {
             playerInput = FindFirstObjectByType<PlayerInput>();
@@ -65,7 +69,6 @@ public class CutsceneCameraController : MonoBehaviour
             }
         }
 
-        // Validation
         if (playerCameraScript == null)
         {
             Debug.LogError("CRITICAL: Player Camera Script not assigned in CutsceneCameraController! Player controls will not work correctly during cutscenes. Please assign your camera control script in the inspector.");
@@ -76,9 +79,6 @@ public class CutsceneCameraController : MonoBehaviour
 
     #region Public API
 
-    /// <summary>
-    /// Orbit around a target point
-    /// </summary>
     public void PlayOrbitCutscene(Transform target, float radius, float angle, float duration, System.Action onComplete = null)
     {
         if (isInCutscene) return;
@@ -94,9 +94,6 @@ public class CutsceneCameraController : MonoBehaviour
         ));
     }
 
-    /// <summary>
-    /// Pan to look at a specific point
-    /// </summary>
     public void PlayPanCutscene(Vector3 targetPosition, float duration, System.Action onComplete = null)
     {
         if (isInCutscene) return;
@@ -111,9 +108,6 @@ public class CutsceneCameraController : MonoBehaviour
         ));
     }
 
-    /// <summary>
-    /// Zoom toward a target
-    /// </summary>
     public void PlayZoomCutscene(Transform target, float zoomDistance, float duration, System.Action onComplete = null)
     {
         if (isInCutscene) return;
@@ -130,9 +124,6 @@ public class CutsceneCameraController : MonoBehaviour
         ));
     }
 
-    /// <summary>
-    /// Move to a specific transform (most flexible option)
-    /// </summary>
     public void PlayCustomCutscene(Transform targetTransform, float duration, System.Action onComplete = null)
     {
         if (isInCutscene) return;
@@ -145,9 +136,6 @@ public class CutsceneCameraController : MonoBehaviour
         ));
     }
 
-    /// <summary>
-    /// Move to specific position and rotation
-    /// </summary>
     public void PlayCustomCutscene(Vector3 targetPosition, Quaternion targetRotation, float duration, System.Action onComplete = null)
     {
         if (isInCutscene) return;
@@ -160,9 +148,6 @@ public class CutsceneCameraController : MonoBehaviour
         ));
     }
 
-    /// <summary>
-    /// Stop current cutscene and return to player control immediately
-    /// </summary>
     public void StopCutscene()
     {
         if (activeCoroutine != null)
@@ -171,7 +156,6 @@ public class CutsceneCameraController : MonoBehaviour
             activeCoroutine = null;
         }
 
-        // Force immediate return to original position
         if (isInCutscene)
         {
             mainCamera.transform.position = originalPosition;
@@ -187,37 +171,30 @@ public class CutsceneCameraController : MonoBehaviour
 
     private IEnumerator CutsceneSequence(Vector3 targetPosition, Quaternion targetRotation, float duration, System.Action onComplete)
     {
-        // Store original camera state
         originalPosition = mainCamera.transform.position;
         originalRotation = mainCamera.transform.rotation;
 
-        // Disable player camera control
         DisablePlayerControl();
         isInCutscene = true;
 
         Debug.Log($"🎬 Cutscene started - Duration: {duration}s");
 
-        // Transition to cutscene camera
         yield return StartCoroutine(TransitionToTarget(targetPosition, targetRotation));
 
         Debug.Log($"🎬 Holding on target for {duration}s");
 
-        // Hold on target for duration
         yield return new WaitForSeconds(duration);
 
         Debug.Log("🎬 Transitioning back to player");
 
-        // Transition back to original position
         yield return StartCoroutine(TransitionToOriginal());
 
-        // Re-enable player control
         ReturnToPlayerControl();
         isInCutscene = false;
         activeCoroutine = null;
 
         Debug.Log("🎬 Cutscene complete - Player controls restored");
 
-        // Invoke callback if provided
         onComplete?.Invoke();
     }
 
@@ -271,7 +248,7 @@ public class CutsceneCameraController : MonoBehaviour
     {
         Debug.Log("🔒 Disabling player controls for cutscene...");
 
-        // Try interface method first (preferred)
+        // Call interface method on player scripts
         if (playerCameraScript is ICutsceneControllable cameraControllable)
         {
             cameraControllable.OnCutsceneStart();
@@ -284,7 +261,7 @@ public class CutsceneCameraController : MonoBehaviour
             Debug.Log($"  ✓ Called OnCutsceneStart on {playerMovementScript.GetType().Name}");
         }
 
-        // Disable your player camera script
+        // Disable player scripts
         if (playerCameraScript != null)
         {
             playerCameraScript.enabled = false;
@@ -295,14 +272,13 @@ public class CutsceneCameraController : MonoBehaviour
             Debug.LogWarning("  ⚠️ Player camera script not assigned!");
         }
 
-        // Disable player movement script if assigned
         if (playerMovementScript != null)
         {
             playerMovementScript.enabled = false;
             Debug.Log($"  ✓ Disabled movement script: {playerMovementScript.GetType().Name}");
         }
 
-        // Disable PlayerInput component if found
+        // Disable PlayerInput component
         if (disablePlayerInput && playerInput != null)
         {
             wasPlayerInputEnabled = playerInput.enabled;
@@ -310,7 +286,13 @@ public class CutsceneCameraController : MonoBehaviour
             Debug.Log($"  ✓ PlayerInput deactivated on {playerInput.gameObject.name}");
         }
 
-        // Optionally pause time
+        // 🚨 NEW: Broadcast to ALL ICutsceneControllable objects (including enemies!)
+        if (broadcastToAllControllables)
+        {
+            BroadcastCutsceneStart();
+        }
+
+        // Pause time if needed
         if (pauseTime)
         {
             Time.timeScale = 0f;
@@ -324,10 +306,9 @@ public class CutsceneCameraController : MonoBehaviour
     {
         Debug.Log("🔓 Restoring player controls...");
 
-        // Reset cutscene state
         isInCutscene = false;
 
-        // Re-enable your player camera script
+        // Re-enable player scripts
         if (playerCameraScript != null)
         {
             playerCameraScript.enabled = true;
@@ -338,14 +319,13 @@ public class CutsceneCameraController : MonoBehaviour
             Debug.LogWarning("  ⚠️ Player camera script not assigned!");
         }
 
-        // Re-enable player movement script if assigned
         if (playerMovementScript != null)
         {
             playerMovementScript.enabled = true;
             Debug.Log($"  ✓ Re-enabled movement script: {playerMovementScript.GetType().Name}");
         }
 
-        // Try interface method (preferred for Input System)
+        // Call interface method on player scripts
         if (playerCameraScript is ICutsceneControllable cameraControllable)
         {
             cameraControllable.OnCutsceneEnd();
@@ -358,7 +338,7 @@ public class CutsceneCameraController : MonoBehaviour
             Debug.Log($"  ✓ Called OnCutsceneEnd on {playerMovementScript.GetType().Name}");
         }
 
-        // Re-activate PlayerInput component if it was disabled
+        // Re-activate PlayerInput
         if (disablePlayerInput && playerInput != null)
         {
             if (wasPlayerInputEnabled)
@@ -368,7 +348,13 @@ public class CutsceneCameraController : MonoBehaviour
             }
         }
 
-        // Resume time if it was paused
+        // 🚨 NEW: Broadcast to ALL ICutsceneControllable objects (including enemies!)
+        if (broadcastToAllControllables)
+        {
+            BroadcastCutsceneEnd();
+        }
+
+        // Resume time if needed
         if (pauseTime)
         {
             Time.timeScale = 1f;
@@ -376,6 +362,92 @@ public class CutsceneCameraController : MonoBehaviour
         }
 
         Debug.Log("🔓 Player controls restored");
+    }
+
+    #endregion
+
+    #region Broadcasting System
+
+    /// <summary>
+    /// Broadcasts OnCutsceneStart to ALL ICutsceneControllable objects in the scene
+    /// This includes enemies, NPCs, interactive objects, etc.
+    /// </summary>
+    private void BroadcastCutsceneStart()
+    {
+        // Find ALL MonoBehaviours that implement ICutsceneControllable
+        MonoBehaviour[] allBehaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+        int broadcastCount = 0;
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 Broadcasting OnCutsceneStart to all ICutsceneControllable objects...");
+        }
+
+        foreach (MonoBehaviour behaviour in allBehaviours)
+        {
+            if (behaviour == null) continue;
+
+            // Skip the player scripts (already handled separately)
+            if (behaviour == playerCameraScript || behaviour == playerMovementScript)
+                continue;
+
+            // Check if it implements ICutsceneControllable
+            if (behaviour is ICutsceneControllable controllable)
+            {
+                controllable.OnCutsceneStart();
+                broadcastCount++;
+
+                if (showBroadcastDebug)
+                {
+                    Debug.Log($"  📡 Sent OnCutsceneStart to: {behaviour.gameObject.name} ({behaviour.GetType().Name})");
+                }
+            }
+        }
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 Broadcast complete: {broadcastCount} objects notified");
+        }
+    }
+
+    /// <summary>
+    /// Broadcasts OnCutsceneEnd to ALL ICutsceneControllable objects in the scene
+    /// </summary>
+    private void BroadcastCutsceneEnd()
+    {
+        MonoBehaviour[] allBehaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+        int broadcastCount = 0;
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 Broadcasting OnCutsceneEnd to all ICutsceneControllable objects...");
+        }
+
+        foreach (MonoBehaviour behaviour in allBehaviours)
+        {
+            if (behaviour == null) continue;
+
+            // Skip the player scripts (already handled separately)
+            if (behaviour == playerCameraScript || behaviour == playerMovementScript)
+                continue;
+
+            // Check if it implements ICutsceneControllable
+            if (behaviour is ICutsceneControllable controllable)
+            {
+                controllable.OnCutsceneEnd();
+                broadcastCount++;
+
+                if (showBroadcastDebug)
+                {
+                    Debug.Log($"  📡 Sent OnCutsceneEnd to: {behaviour.gameObject.name} ({behaviour.GetType().Name})");
+                }
+            }
+        }
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 Broadcast complete: {broadcastCount} objects notified");
+        }
     }
 
     #endregion

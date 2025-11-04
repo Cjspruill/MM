@@ -1,8 +1,9 @@
 ﻿using UnityEngine;
 
 /// <summary>
-/// Enemy combat system - handles attacks, combos, and hitboxes
-/// Improved version with fallback safety for missing animation events
+/// Enhanced Enemy combat system with pause support
+/// Handles attacks, combos, and hitboxes
+/// Now respects cutscene and tutorial pause states
 /// </summary>
 public class EnemyComboSystem : MonoBehaviour
 {
@@ -32,6 +33,7 @@ public class EnemyComboSystem : MonoBehaviour
     // References
     private Animator animator;
     private EnemyAttackCollider enemyAttackCollider;
+    private TutorialManager tutorialManager;
 
     // Combat state
     [SerializeField] private bool isAttacking = false;
@@ -39,15 +41,19 @@ public class EnemyComboSystem : MonoBehaviour
     [SerializeField] private int currentComboStep = 0;
     private int targetComboLength = 0;
     private float nextAttackTime = 0f;
-    private float attackStartTime = 0f; // For stall detection
+    private float attackStartTime = 0f;
 
     // Hitstun
     [SerializeField] private bool isStunned = false;
     private float lastStunTime = -999f;
 
+    // Pause tracking
+    private bool isPaused = false;
+
     void Start()
     {
         animator = GetComponent<Animator>();
+        tutorialManager = FindFirstObjectByType<TutorialManager>();
 
         if (animator == null)
             Debug.LogError($"{gameObject.name}: No Animator component found!");
@@ -62,12 +68,43 @@ public class EnemyComboSystem : MonoBehaviour
             debugRenderer.enabled = false;
 
         if (showDebug)
-            Debug.Log($"{gameObject.name} initialized IMPROVED combat system (cooldown: {comboCooldown}s)");
+            Debug.Log($"{gameObject.name} initialized combat system with pause support (cooldown: {comboCooldown}s)");
     }
 
     void Update()
     {
-        // 🚨 Emergency failsafe — if stuck attacking too long, reset
+        // Check if paused by tutorial
+        if (tutorialManager == null)
+        {
+            tutorialManager = FindFirstObjectByType<TutorialManager>();
+        }
+
+        bool newPauseState = tutorialManager != null && tutorialManager.IsShowingTutorial;
+
+        if (newPauseState != isPaused)
+        {
+            isPaused = newPauseState;
+
+            if (isPaused)
+            {
+                if (showDebug)
+                {
+                    Debug.Log($"{gameObject.name} combat paused by tutorial");
+                }
+
+                // Cancel any ongoing attacks immediately
+                if (isAttacking || inCombat)
+                {
+                    CancelAttack();
+                }
+            }
+            else if (showDebug)
+            {
+                Debug.Log($"{gameObject.name} combat resumed after tutorial");
+            }
+        }
+
+        // Emergency failsafe - if stuck attacking too long, reset
         if (isAttacking && Time.time - attackStartTime > attackDuration + 2f)
         {
             Debug.LogWarning($"⚠️ {gameObject.name} stuck attacking for {Time.time - attackStartTime:F1}s - forcing reset!");
@@ -77,12 +114,24 @@ public class EnemyComboSystem : MonoBehaviour
 
     public bool CanAttack()
     {
+        // CRITICAL: Don't allow attacks while paused
+        if (isPaused)
+        {
+            return false;
+        }
+
         bool canAttack = !isAttacking && !isStunned && Time.time >= nextAttackTime;
         return canAttack;
     }
 
     public bool WantsToAttack()
     {
+        // CRITICAL: Don't want to attack while paused
+        if (isPaused)
+        {
+            return false;
+        }
+
         return Time.time >= nextAttackTime;
     }
 
@@ -92,6 +141,14 @@ public class EnemyComboSystem : MonoBehaviour
         {
             if (showDebug)
                 Debug.LogWarning($"❌ {gameObject.name} StartCombo() BLOCKED by CanAttack()");
+            return;
+        }
+
+        // Double-check pause state
+        if (isPaused)
+        {
+            if (showDebug)
+                Debug.LogWarning($"❌ {gameObject.name} StartCombo() BLOCKED by pause state");
             return;
         }
 
@@ -111,6 +168,15 @@ public class EnemyComboSystem : MonoBehaviour
 
     void PerformAttack()
     {
+        // CRITICAL: Check pause state before performing attack
+        if (isPaused)
+        {
+            if (showDebug)
+                Debug.Log($"❌ {gameObject.name} PerformAttack() cancelled - paused");
+            EndCombo();
+            return;
+        }
+
         if (isStunned)
         {
             EndCombo();
@@ -143,6 +209,14 @@ public class EnemyComboSystem : MonoBehaviour
 
     public void ActivateHitbox()
     {
+        // CRITICAL: Don't activate hitbox if paused
+        if (isPaused)
+        {
+            if (showDebug)
+                Debug.Log($"❌ {gameObject.name} ActivateHitbox() cancelled - paused");
+            return;
+        }
+
         if (enemyAttackCollider != null)
             enemyAttackCollider.ClearHitList();
 
@@ -156,7 +230,7 @@ public class EnemyComboSystem : MonoBehaviour
     public void DeactivateHitbox()
     {
         if (!isAttacking && !inCombat)
-            return; // Prevents redundant calls
+            return;
 
         if (attackHitbox != null)
             attackHitbox.enabled = false;
@@ -169,8 +243,8 @@ public class EnemyComboSystem : MonoBehaviour
         if (animator != null)
             animator.SetBool("IsAttacking", false);
 
-        // Continue combo if not finished
-        if (currentComboStep < targetComboLength && inCombat && !isStunned)
+        // Continue combo if not finished and not paused
+        if (currentComboStep < targetComboLength && inCombat && !isStunned && !isPaused)
         {
             if (showDebug)
                 Debug.Log($"➡️ {gameObject.name} preparing next attack in combo ({currentComboStep}/{targetComboLength})...");
@@ -184,7 +258,7 @@ public class EnemyComboSystem : MonoBehaviour
 
     void EndCombo()
     {
-        isAttacking = false; // <--- safety reset
+        isAttacking = false;
         inCombat = false;
         currentComboStep = 0;
         targetComboLength = 0;

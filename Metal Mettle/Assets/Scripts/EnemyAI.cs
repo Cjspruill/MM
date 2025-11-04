@@ -1,23 +1,29 @@
 ﻿using UnityEngine;
 
 /// <summary>
-/// TRULY FIXED - Handles state transitions properly and re-engages
+/// Enhanced EnemyAI with cutscene and tutorial pause support
+/// Stops all movement and attacking during cutscenes and tutorials
 /// </summary>
-public class EnemyAI : MonoBehaviour
+public class EnemyAI : MonoBehaviour, ICutsceneControllable
 {
     [Header("Component References")]
     private EnemyMovement movementSystem;
     private EnemyComboSystem combatSystem;
     private Health health;
+    private TutorialManager tutorialManager;
 
     [Header("State Management")]
     [Tooltip("How long to stay locked in attack state after player leaves (0 = instant transition)")]
-    public float attackStateLockTime = 0.5f;  // Very short lock
+    public float attackStateLockTime = 0.5f;
 
     // State tracking
     private enum EnemyState { Wandering, Chasing, Attacking }
-    [SerializeField]private EnemyState currentState = EnemyState.Wandering;
+    [SerializeField] private EnemyState currentState = EnemyState.Wandering;
     private float stateEnterTime = 0f;
+
+    // Pause state tracking
+    private bool isInCutscene = false;
+    private bool wasPausedByTutorial = false;
 
     [Header("Debug")]
     public bool showDebug = true;
@@ -27,6 +33,7 @@ public class EnemyAI : MonoBehaviour
         movementSystem = GetComponent<EnemyMovement>();
         combatSystem = GetComponent<EnemyComboSystem>();
         health = GetComponent<Health>();
+        tutorialManager = FindFirstObjectByType<TutorialManager>();
 
         if (movementSystem == null)
         {
@@ -40,12 +47,31 @@ public class EnemyAI : MonoBehaviour
 
         if (showDebug)
         {
-            Debug.Log($"{gameObject.name} initialized with TRULY FIXED AI");
+            Debug.Log($"{gameObject.name} initialized with cutscene/tutorial pause support");
         }
     }
 
     void Update()
     {
+        // CRITICAL: Check if paused by cutscene or tutorial
+        if (isInCutscene || IsPausedByTutorial())
+        {
+            // Stop all movement
+            if (movementSystem != null)
+            {
+                movementSystem.StopMovement();
+            }
+
+            // Cancel any ongoing attacks
+            if (combatSystem != null && combatSystem.IsAttacking())
+            {
+                combatSystem.CancelAttack();
+            }
+
+            return; // Don't process any AI logic while paused
+        }
+
+        // Normal AI logic resumes here
         if (combatSystem != null && combatSystem.IsStunned()) return;
 
         if (health != null && health.IsDead())
@@ -67,71 +93,102 @@ public class EnemyAI : MonoBehaviour
         DetermineAndHandleState(distanceToPlayer, isChasing);
     }
 
+    #region ICutsceneControllable Implementation
+
+    public void OnCutsceneStart()
+    {
+        Debug.Log($"{gameObject.name}: Cutscene started - Pausing enemy AI");
+        isInCutscene = true;
+
+        // Stop all movement
+        if (movementSystem != null)
+        {
+            movementSystem.StopMovement();
+        }
+
+        // Cancel any ongoing attacks
+        if (combatSystem != null && combatSystem.IsAttacking())
+        {
+            combatSystem.CancelAttack();
+        }
+    }
+
+    public void OnCutsceneEnd()
+    {
+        Debug.Log($"{gameObject.name}: Cutscene ended - Resuming enemy AI");
+        isInCutscene = false;
+    }
+
+    #endregion
+
+    private bool IsPausedByTutorial()
+    {
+        if (tutorialManager == null)
+        {
+            tutorialManager = FindFirstObjectByType<TutorialManager>();
+        }
+
+        bool isPaused = tutorialManager != null && tutorialManager.IsShowingTutorial;
+
+        // Track state changes for debug logging
+        if (isPaused && !wasPausedByTutorial)
+        {
+            wasPausedByTutorial = true;
+            if (showDebug)
+            {
+                Debug.Log($"{gameObject.name}: Paused by tutorial");
+            }
+        }
+        else if (!isPaused && wasPausedByTutorial)
+        {
+            wasPausedByTutorial = false;
+            if (showDebug)
+            {
+                Debug.Log($"{gameObject.name}: Resumed after tutorial");
+            }
+        }
+
+        return isPaused;
+    }
+
     void DetermineAndHandleState(float distanceToPlayer, bool isChasing)
     {
         EnemyState previousState = currentState;
-        float attackRange = combatSystem.GetAttackRange() * 1.3f; // 30% buffer
+        float attackRange = combatSystem.GetAttackRange() * 1.3f;
 
-        // Debug current conditions every second
         if (showDebug && Time.frameCount % 60 == 0)
         {
             Debug.Log($"🔍 {gameObject.name} | isChasing: {isChasing} | dist: {distanceToPlayer:F1} | attackRange: {attackRange:F1}");
         }
 
-        // STATE DETERMINATION - Clear priority system
         EnemyState newState;
 
         if (!isChasing)
         {
-            // Not chasing at all = Wander
             newState = EnemyState.Wandering;
         }
         else if (distanceToPlayer <= attackRange)
         {
-            // In attack range = Attack
             newState = EnemyState.Attacking;
         }
         else
         {
-            // Chasing but out of range = Chase
             newState = EnemyState.Chasing;
         }
 
-        // IMPORTANT: Don't transition out of Attacking state instantly
-        // This prevents jitter when player moves slightly
-        if (currentState == EnemyState.Attacking && newState != EnemyState.Attacking)
+        if (newState != previousState)
         {
-            float timeInState = Time.time - stateEnterTime;
-
-            // Only transition if we've been in attack state for minimum time AND not actively attacking
-            bool isActuallyAttacking = combatSystem.IsAttacking() || combatSystem.IsInCombat();
-
-            if (isActuallyAttacking)
-            {
-                // Still attacking, stay in state
-                newState = EnemyState.Attacking;
-            }
-            else if (timeInState < attackStateLockTime)
-            {
-                // Just finished attacking, brief lock before transitioning
-                newState = EnemyState.Attacking;
-            }
-            // else: enough time passed and not attacking, allow transition
-        }
-
-        // Apply state change
-        if (newState != currentState)
-        {
-            if (showDebug)
-            {
-                Debug.Log($"🔄 {gameObject.name}: {currentState} → {newState} (dist: {distanceToPlayer:F1}, range: {attackRange:F1}, chasing: {isChasing})");
-            }
-
             currentState = newState;
             stateEnterTime = Time.time;
+
+            if (showDebug)
+            {
+                Debug.Log($"🔄 {gameObject.name} state: {previousState} → {currentState}");
+            }
         }
 
-        // Handle current state
+        float timeInState = Time.time - stateEnterTime;
+
         switch (currentState)
         {
             case EnemyState.Wandering:
@@ -143,7 +200,7 @@ public class EnemyAI : MonoBehaviour
                 break;
 
             case EnemyState.Attacking:
-                HandleAttacking(distanceToPlayer);
+                HandleAttacking(distanceToPlayer, timeInState);
                 break;
         }
     }
@@ -164,55 +221,52 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    void HandleAttacking(float distanceToPlayer)
+    void HandleAttacking(float distanceToPlayer, float timeInState)
     {
-        // EMERGENCY UNSTUCK: If in attack state too long without attacking, force transition
-        float timeInState = Time.time - stateEnterTime;
-        bool isActuallyAttacking = combatSystem.IsAttacking() || combatSystem.IsInCombat();
+        bool isActuallyAttacking = combatSystem != null && combatSystem.IsAttacking();
 
-        if (!isActuallyAttacking && timeInState > 3f)
+        if (!isActuallyAttacking && timeInState > attackStateLockTime)
         {
-            // Been in attack state for 3+ seconds without attacking = STUCK
-            Debug.LogWarning($"🚨 {gameObject.name} STUCK in attack state for {timeInState:F1}s - FORCING TRANSITION!");
-
-            // Force transition to chase
-            currentState = EnemyState.Chasing;
-            stateEnterTime = Time.time;
-
-            if (movementSystem != null)
+            float attackRange = combatSystem.GetAttackRange() * 1.3f;
+            if (distanceToPlayer > attackRange * 1.5f)
             {
-                movementSystem.HandleChaseMovement();
+                if (showDebug)
+                {
+                    Debug.Log($"❌ {gameObject.name} TOO FAR from player ({distanceToPlayer:F1} > {attackRange * 1.5f:F1}) - returning to chase");
+                }
+
+                currentState = EnemyState.Chasing;
+                stateEnterTime = Time.time;
+
+                if (movementSystem != null)
+                {
+                    movementSystem.HandleChaseMovement();
+                }
+                return;
             }
-            return;
         }
 
-        // Movement during attack state
         if (movementSystem != null)
         {
             if (isActuallyAttacking)
             {
-                // Actually attacking - stop moving
                 movementSystem.HandleCombatMovement();
             }
             else
             {
-                // Waiting to attack - can move closer
                 float attackRange = combatSystem.GetAttackRange() * 1.3f;
 
                 if (distanceToPlayer > attackRange * 0.9f)
                 {
-                    // Too far, move closer
                     movementSystem.HandleChaseMovement();
                 }
                 else
                 {
-                    // Close enough, face player
                     movementSystem.HandleCombatMovement();
                 }
             }
         }
 
-        // Attack decision - CHECK EVERY FRAME
         if (combatSystem != null && !isActuallyAttacking)
         {
             bool canAttack = combatSystem.CanAttack();
@@ -220,14 +274,12 @@ public class EnemyAI : MonoBehaviour
             float attackRange = combatSystem.GetAttackRange() * 1.3f;
             bool inRange = distanceToPlayer <= attackRange;
 
-            // Debug output every second
             if (showDebug && Time.frameCount % 60 == 0)
             {
                 float cooldown = combatSystem.GetNextAttackTime() - Time.time;
                 Debug.Log($"📊 {gameObject.name} | State: {currentState} | TimeInState: {timeInState:F1}s | Can: {canAttack} | Wants: {wantsToAttack} | InRange: {inRange} | Dist: {distanceToPlayer:F1}/{attackRange:F1} | Cooldown: {cooldown:F1}s");
             }
 
-            // ATTACK if ready
             if (canAttack)
             {
                 if (wantsToAttack || inRange)
@@ -246,7 +298,6 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    // Public interface
     public void ActivateHitbox(string collider = null)
     {
         if (combatSystem != null)
@@ -255,7 +306,6 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    // Public interface
     public void DeactivateHitbox(string collider = null)
     {
         if (combatSystem != null)
@@ -268,22 +318,19 @@ public class EnemyAI : MonoBehaviour
     public bool IsChasing() => movementSystem != null && movementSystem.IsChasing();
     public bool IsWandering() => currentState == EnemyState.Wandering;
 
-    // Debug visualization
     void OnDrawGizmosSelected()
     {
         if (combatSystem == null || !Application.isPlaying) return;
 
-        // Attack range
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, combatSystem.GetAttackRange());
 
-        // Buffered attack range (what we actually use)
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, combatSystem.GetAttackRange() * 1.3f);
 
 #if UNITY_EDITOR
         UnityEditor.Handles.Label(transform.position + Vector3.up * 3f,
-            $"State: {currentState}\nCooldown: {Mathf.Max(0, combatSystem.GetNextAttackTime() - Time.time):F1}s");
+            $"State: {currentState}\nCooldown: {Mathf.Max(0, combatSystem.GetNextAttackTime() - Time.time):F1}s\nPaused: {(isInCutscene || IsPausedByTutorial())}");
 #endif
     }
 }

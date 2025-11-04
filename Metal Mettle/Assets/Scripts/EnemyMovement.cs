@@ -1,9 +1,10 @@
 ﻿using UnityEngine;
 using UnityEngine.AI;
-using UnityEngine.UIElements;
 
 /// <summary>
+/// Enhanced EnemyMovement with pause support
 /// Handles all enemy movement: wandering, chasing, NavMeshAgent control
+/// Now respects cutscene and tutorial pause states
 /// </summary>
 public class EnemyMovement : MonoBehaviour
 {
@@ -11,11 +12,12 @@ public class EnemyMovement : MonoBehaviour
     public Transform player;
     private NavMeshAgent agent;
     private Animator animator;
+    private TutorialManager tutorialManager;
 
     [Header("Movement Settings")]
     public float chaseSpeed = 3.5f;
     public float wanderSpeed = 2f;
-    public float stoppingDistance = 1.5f;  // FIXED: Was 2.0, must be less than attackRange (2.5)
+    public float stoppingDistance = 1.5f;
 
     [Header("Vision Detection")]
     public float detectionRange = 15f;
@@ -58,10 +60,14 @@ public class EnemyMovement : MonoBehaviour
     // State tracking
     private bool isChasing = false;
 
+    // Pause tracking
+    private bool isPaused = false;
+
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
+        tutorialManager = FindFirstObjectByType<TutorialManager>();
 
         if (player == null)
         {
@@ -76,7 +82,6 @@ public class EnemyMovement : MonoBehaviour
             }
         }
 
-        // Configure NavMeshAgent
         if (agent != null)
         {
             agent.speed = wanderSpeed;
@@ -90,18 +95,45 @@ public class EnemyMovement : MonoBehaviour
 
     public void UpdateMovement(bool isInCombat, bool isStunned)
     {
+        // Check if paused by tutorial
+        if (tutorialManager == null)
+        {
+            tutorialManager = FindFirstObjectByType<TutorialManager>();
+        }
+
+        bool newPauseState = tutorialManager != null && tutorialManager.IsShowingTutorial;
+
+        if (newPauseState != isPaused)
+        {
+            isPaused = newPauseState;
+            if (isPaused && showDebug)
+            {
+                Debug.Log($"{gameObject.name} movement paused by tutorial");
+            }
+            else if (!isPaused && showDebug)
+            {
+                Debug.Log($"{gameObject.name} movement resumed after tutorial");
+            }
+        }
+
+        // CRITICAL: Stop movement if paused
+        if (isPaused)
+        {
+            StopMovement();
+            return;
+        }
+
+        // Normal movement logic
         if (isStunned || player == null || agent == null) return;
 
         float distanceToPlayer = Vector3.Distance(transform.position, player.position);
 
-        // Check vision periodically
         if (Time.time >= nextVisionCheck)
         {
             CheckLineOfSight(distanceToPlayer);
             nextVisionCheck = Time.time + visionCheckInterval;
         }
 
-        // Update animator
         if (animator != null)
         {
             float currentSpeed = agent.velocity.magnitude;
@@ -111,12 +143,17 @@ public class EnemyMovement : MonoBehaviour
 
     public void HandleChaseMovement()
     {
+        if (isPaused)
+        {
+            StopMovement();
+            return;
+        }
+
         if (agent.speed != chaseSpeed)
         {
             agent.speed = chaseSpeed;
         }
 
-        // Re-enable avoidance when chasing
         if (disableAvoidanceInCombat && agent.enabled)
         {
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
@@ -138,6 +175,12 @@ public class EnemyMovement : MonoBehaviour
 
     public void HandleCombatMovement()
     {
+        if (isPaused)
+        {
+            StopMovement();
+            return;
+        }
+
         agent.isStopped = true;
 
         if (agent.speed != chaseSpeed)
@@ -145,13 +188,11 @@ public class EnemyMovement : MonoBehaviour
             agent.speed = chaseSpeed;
         }
 
-        // Disable avoidance in combat
         if (disableAvoidanceInCombat && agent.enabled)
         {
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.NoObstacleAvoidance;
         }
 
-        // Face player
         Vector3 directionToPlayer = (player.position - transform.position).normalized;
         directionToPlayer.y = 0;
         if (directionToPlayer != Vector3.zero)
@@ -163,12 +204,17 @@ public class EnemyMovement : MonoBehaviour
 
     public void HandleWandering()
     {
+        if (isPaused)
+        {
+            StopMovement();
+            return;
+        }
+
         if (agent.speed != wanderSpeed)
         {
             agent.speed = wanderSpeed;
         }
 
-        // Re-enable avoidance when wandering
         if (disableAvoidanceInCombat && agent.enabled)
         {
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.LowQualityObstacleAvoidance;
@@ -231,71 +277,78 @@ public class EnemyMovement : MonoBehaviour
         }
 
         canSeePlayer = false;
-        // ❌ REMOVED: isChasing = false;  (Don't reset this every frame!)
 
         if (distanceToPlayer > detectionRange)
         {
             if (previousCanSee)
             {
-                lastSeenTime = Time.time;
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
+                lastSeenTime = Time.time;
             }
 
-            // Only stop chasing if memory has expired
             if (Time.time - lastSeenTime > memoryDuration)
             {
                 isChasing = false;
             }
+
             return;
         }
 
         Vector3 directionToPlayer = (player.position - transform.position).normalized;
         float angleToPlayer = Vector3.Angle(transform.forward, directionToPlayer);
 
-        if (angleToPlayer > viewAngle / 2f)
+        if (angleToPlayer > viewAngle)
         {
             if (previousCanSee)
             {
-                lastSeenTime = Time.time;
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
+                lastSeenTime = Time.time;
             }
 
-            // Only stop chasing if memory has expired
             if (Time.time - lastSeenTime > memoryDuration)
             {
                 isChasing = false;
             }
+
             return;
         }
 
         Vector3 rayStart = transform.position + Vector3.up * 1.5f;
-        Vector3 rayDirection = (player.position + Vector3.up * 1f) - rayStart;
+        Vector3 rayDirection = player.position + Vector3.up - rayStart;
         float rayDistance = rayDirection.magnitude;
 
         if (Physics.Raycast(rayStart, rayDirection.normalized, out RaycastHit hit, rayDistance, obstacleMask | playerMask))
         {
-            if (hit.transform.CompareTag("Player"))
+            if (hit.collider.CompareTag("Player"))
             {
                 canSeePlayer = true;
-                isChasing = true;  // ✅ Start chasing when spotted
+                isChasing = true;
                 lastSeenTime = Time.time;
                 lastKnownPlayerPosition = player.position;
                 hasLastKnownPosition = true;
 
-                AlertNearbyEnemies();
-            }
-            else if (previousCanSee)
-            {
-                lastSeenTime = Time.time;
-                lastKnownPlayerPosition = player.position;
-                hasLastKnownPosition = true;
+                if (!previousCanSee)
+                {
+                    AlertNearbyEnemies();
+
+                    if (showDebug)
+                    {
+                        Debug.Log($"{gameObject.name} spotted player!");
+                    }
+                }
             }
         }
 
-        // Check if memory has expired (not seen player for too long)
-        if (Time.time - lastSeenTime > memoryDuration)
+        if (!canSeePlayer && previousCanSee)
+        {
+            lastKnownPlayerPosition = player.position;
+            hasLastKnownPosition = true;
+            lastSeenTime = Time.time;
+        }
+
+        if (!canSeePlayer && Time.time - lastSeenTime > memoryDuration)
         {
             isChasing = false;
         }
@@ -348,7 +401,6 @@ public class EnemyMovement : MonoBehaviour
         }
     }
 
-    // Public getters
     public bool IsChasing() => isChasing;
     public bool CanSeePlayer() => canSeePlayer;
     public float GetDistanceToPlayer() => player != null ? Vector3.Distance(transform.position, player.position) : float.MaxValue;
