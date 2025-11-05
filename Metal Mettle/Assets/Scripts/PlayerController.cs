@@ -21,9 +21,11 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
     public float gravity = -9.81f;
 
     [Header("Animation Settings")]
-    public float animationSmoothTime = 0.1f; // How quickly animation values interpolate
-    public float walkAnimationValue = 0.5f; // Animation value for walking
-    public float sprintAnimationValue = 1f; // Animation value for sprinting
+    public float animationSmoothTime = 0.1f;
+    public float walkAnimationValue = 0.5f;
+    public float sprintAnimationValue = 1f;
+    [Tooltip("Name of the bool parameter in the Animator for cutscene state")]
+    public string cutsceneAnimatorBool = "InCutscene";
 
     [Header("Combat Movement")]
     public bool allowMovementDuringAttack = false;
@@ -37,12 +39,12 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
     private bool isGrounded;
     private bool justStoppedSprinting = false;
     private bool wasSprinting = false;
-    private bool isInCutscene = false; // Track cutscene state
-    private Quaternion lockedRotation; // Store rotation during cutscene
+    private bool isInCutscene = false;
+    private Quaternion lockedRotation;
 
     // Animation smoothing
-    private float currentAnimSpeed; // Direction Y (forward/back)
-    private float currentAnimDirection; // Direction X (left/right strafe)
+    private float currentAnimSpeed;
+    private float currentAnimDirection;
     private float animSpeedVelocity;
     private float animDirectionVelocity;
 
@@ -93,9 +95,13 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
             controls.Disable();
         }
 
-        // Reset animation to idle during cutscene
+        // 🎬 SET THE CUTSCENE ANIMATOR BOOL TO TRUE
         if (animator != null)
         {
+            animator.SetBool(cutsceneAnimatorBool, true);
+            Debug.Log($"✅ PlayerController: Set animator bool '{cutsceneAnimatorBool}' to TRUE");
+
+            // Reset animation to idle during cutscene (set parameters to zero)
             UpdateAnimationParameters(0f, 0f);
         }
     }
@@ -109,20 +115,29 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
         {
             controls.Enable();
         }
+
+        // 🎬 SET THE CUTSCENE ANIMATOR BOOL BACK TO FALSE
+        if (animator != null)
+        {
+            animator.SetBool(cutsceneAnimatorBool, false);
+            Debug.Log($"✅ PlayerController: Set animator bool '{cutsceneAnimatorBool}' to FALSE");
+
+            // CRITICAL: Force animation parameters to update immediately
+            // This prevents the "stuck in idle" bug after cutscene ends
+            currentAnimSpeed = 0f;
+            currentAnimDirection = 0f;
+            animSpeedVelocity = 0f;
+            animDirectionVelocity = 0f;
+        }
     }
 
     #endregion
 
     void OnAttackInput(InputAction.CallbackContext context)
     {
-        // Don't process input during cutscenes
         if (isInCutscene) return;
+        if (TutorialManager.IsTutorialActive) return;
 
-        // Don't process input during tutorials
-        if (TutorialManager.IsTutorialActive)
-            return;
-
-        // Lock cursor if not already locked
         if (Cursor.lockState != CursorLockMode.Locked && !PauseController.Instance.IsPaused())
         {
             Cursor.lockState = CursorLockMode.Locked;
@@ -145,7 +160,6 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
             return;
         }
 
-        // Don't process input during tutorials
         if (TutorialManager.IsTutorialActive)
             return;
 
@@ -253,7 +267,7 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
         // Update animation parameters
         UpdateAnimationParameters(targetSpeed, targetDirection);
 
-        // Rotation - always face camera forward (SKIP during cutscenes handled by early return above)
+        // Rotation - always face camera forward
         if (cameraForward.magnitude > 0.01f)
         {
             Quaternion targetRotation = Quaternion.LookRotation(cameraForward);
@@ -290,9 +304,9 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
             animationSmoothTime
         );
 
-        // Set animator parameters
-        animator.SetFloat("Speed", currentAnimSpeed);      // Y-axis (forward/back)
-        animator.SetFloat("Direction", currentAnimDirection); // X-axis (left/right)
+        // Set animator parameters - YOUR ANIMATOR USES "Speed" and "Direction"
+        animator.SetFloat("Speed", currentAnimSpeed);
+        animator.SetFloat("Direction", currentAnimDirection);
     }
 
     void AllowActions()
@@ -304,8 +318,6 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
 
     void OnDisable()
     {
-
-        // Check if controls exists BEFORE trying to unsubscribe
         if (controls != null)
         {
             controls.Player.Attack.performed -= OnAttackInput;

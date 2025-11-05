@@ -1,8 +1,9 @@
 ﻿using UnityEngine;
+using System.Collections;
 
 /// <summary>
-/// Simple opening cutscene that zooms into the player's face over 5 seconds.
-/// Attach to any GameObject in the scene (like a CutsceneManager).
+/// Opening cutscene that zooms into the player's face.
+/// NOW WITH PROPER BROADCASTING AND TIMING!
 /// </summary>
 public class OpeningCutscene : MonoBehaviour
 {
@@ -12,17 +13,25 @@ public class OpeningCutscene : MonoBehaviour
     [Header("Settings")]
     [SerializeField] private bool playOnStart = true;
     [SerializeField] private float cutsceneDuration = 5f;
-    [SerializeField] private float startDistance = 5f; // Starting distance from face
-    [SerializeField] private float endDistance = 1.5f; // Ending distance (close-up)
-    [SerializeField] private float horizontalAngle = 0f; // 0=front, 45=side, etc.
-    [SerializeField] private float verticalAngle = 0f; // 0=level, 10=slightly above
-    [SerializeField] private Vector3 lookAtOffset = new Vector3(0, 0, 0); // Offset where camera looks
+    [SerializeField] private float startDistance = 5f;
+    [SerializeField] private float endDistance = 1.5f;
+    [SerializeField] private float horizontalAngle = 0f;
+    [SerializeField] private float verticalAngle = 0f;
+    [SerializeField] private Vector3 lookAtOffset = new Vector3(0, 0, 0);
+
+    [Header("Timing")]
+    [SerializeField] private float startDelay = 0.1f; // Delay to ensure all Start() methods have run
 
     [Header("Optional")]
     [SerializeField] private bool findPlayerAutomatically = true;
     [SerializeField] private string playerTag = "Player";
 
+    [Header("Broadcasting")]
+    [SerializeField] private bool broadcastCutsceneEvents = true;
+    [SerializeField] private bool showBroadcastDebug = true;
+
     private bool hasPlayed = false;
+    private bool isInCutscene = false;
 
     private void Start()
     {
@@ -53,11 +62,27 @@ public class OpeningCutscene : MonoBehaviour
             }
         }
 
-        // Play cutscene on start if enabled
-        if (playOnStart && CutsceneCameraController.Instance != null)
+        // Play cutscene on start if enabled - USE COROUTINE FOR TIMING
+        if (playOnStart)
         {
-            PlayOpeningCutscene();
+            StartCoroutine(DelayedCutsceneStart());
         }
+    }
+
+    /// <summary>
+    /// Delays cutscene start to ensure all Start() methods have executed
+    /// This prevents race conditions with PlayerController initialization
+    /// </summary>
+    private IEnumerator DelayedCutsceneStart()
+    {
+        Debug.Log($"⏰ OpeningCutscene: Waiting {startDelay}s before starting cutscene...");
+
+        // Wait for at least one frame AND the delay
+        yield return null; // Wait one frame
+        yield return new WaitForSeconds(startDelay);
+
+        Debug.Log("⏰ OpeningCutscene: Starting cutscene NOW!");
+        PlayOpeningCutscene();
     }
 
     public void PlayOpeningCutscene()
@@ -81,12 +106,30 @@ public class OpeningCutscene : MonoBehaviour
         }
 
         hasPlayed = true;
+        isInCutscene = true;
 
-        Debug.Log("🎬 Playing opening cutscene - zooming to player face");
+        Debug.Log("🎬 ========== OPENING CUTSCENE STARTING ==========");
+
+        // 🚨 BROADCAST CUTSCENE START **FIRST** BEFORE ANYTHING ELSE
+        if (broadcastCutsceneEvents)
+        {
+            BroadcastCutsceneStart();
+        }
+
+        // Small delay to ensure broadcast is processed
+        StartCoroutine(StartCutsceneAfterBroadcast());
+    }
+
+    private IEnumerator StartCutsceneAfterBroadcast()
+    {
+        // Wait one frame to ensure broadcast is fully processed
+        yield return null;
+
+        Debug.Log("🎬 Setting up camera positions...");
 
         // Calculate starting camera position (far away)
         Vector3 headPosition = playerHeadTransform.position;
-        Vector3 playerForward = playerHeadTransform.root.forward; // Use root (player body) rotation
+        Vector3 playerForward = playerHeadTransform.root.forward;
         Vector3 playerRight = playerHeadTransform.root.right;
         Vector3 worldUp = Vector3.up;
 
@@ -111,6 +154,8 @@ public class OpeningCutscene : MonoBehaviour
         Camera.main.transform.position = startPosition;
         Camera.main.transform.rotation = startRotation;
 
+        Debug.Log("🎬 Starting camera zoom...");
+
         // Then zoom in using the cutscene system
         CutsceneCameraController.Instance.PlayCustomCutscene(
             endPosition,
@@ -122,7 +167,15 @@ public class OpeningCutscene : MonoBehaviour
 
     private void OnCutsceneComplete()
     {
-        Debug.Log("🎬 Opening cutscene complete!");
+        Debug.Log("🎬 ========== OPENING CUTSCENE COMPLETE ==========");
+        isInCutscene = false;
+
+        // 🚨 BROADCAST CUTSCENE END
+        if (broadcastCutsceneEvents)
+        {
+            BroadcastCutsceneEnd();
+        }
+
         // Player controls automatically restored by CutsceneCameraController
     }
 
@@ -131,6 +184,84 @@ public class OpeningCutscene : MonoBehaviour
     {
         PlayOpeningCutscene();
     }
+
+    #region Broadcasting System
+
+    /// <summary>
+    /// Broadcasts OnCutsceneStart to ALL ICutsceneControllable objects in the scene
+    /// </summary>
+    private void BroadcastCutsceneStart()
+    {
+        MonoBehaviour[] allBehaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+        int broadcastCount = 0;
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 [OpeningCutscene] Broadcasting OnCutsceneStart to all ICutsceneControllable objects...");
+        }
+
+        foreach (MonoBehaviour behaviour in allBehaviours)
+        {
+            if (behaviour == null) continue;
+
+            // Check if it implements ICutsceneControllable
+            if (behaviour is ICutsceneControllable controllable)
+            {
+                controllable.OnCutsceneStart();
+                broadcastCount++;
+
+                if (showBroadcastDebug)
+                {
+                    Debug.Log($"  📡 Sent OnCutsceneStart to: {behaviour.gameObject.name} ({behaviour.GetType().Name})");
+                }
+            }
+        }
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 [OpeningCutscene] Broadcast complete: {broadcastCount} objects notified");
+        }
+    }
+
+    /// <summary>
+    /// Broadcasts OnCutsceneEnd to ALL ICutsceneControllable objects in the scene
+    /// </summary>
+    private void BroadcastCutsceneEnd()
+    {
+        MonoBehaviour[] allBehaviours = FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+        int broadcastCount = 0;
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 [OpeningCutscene] Broadcasting OnCutsceneEnd to all ICutsceneControllable objects...");
+        }
+
+        foreach (MonoBehaviour behaviour in allBehaviours)
+        {
+            if (behaviour == null) continue;
+
+            // Check if it implements ICutsceneControllable
+            if (behaviour is ICutsceneControllable controllable)
+            {
+                controllable.OnCutsceneEnd();
+                broadcastCount++;
+
+                if (showBroadcastDebug)
+                {
+                    Debug.Log($"  📡 Sent OnCutsceneEnd to: {behaviour.gameObject.name} ({behaviour.GetType().Name})");
+                }
+            }
+        }
+
+        if (showBroadcastDebug)
+        {
+            Debug.Log($"📡 [OpeningCutscene] Broadcast complete: {broadcastCount} objects notified");
+        }
+    }
+
+    #endregion
+
+    #region Gizmos
 
     private void OnDrawGizmosSelected()
     {
@@ -177,4 +308,6 @@ public class OpeningCutscene : MonoBehaviour
         UnityEditor.Handles.Label(lookTarget, "Look Target");
 #endif
     }
+
+    #endregion
 }
