@@ -71,6 +71,11 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
         {
             controls.Player.Attack.performed += OnAttackInput;
         }
+
+        // **FIXED: Lock cursor on game start**
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        Debug.Log("PlayerController: Cursor locked on start");
     }
 
     private void OnEnable()
@@ -115,6 +120,11 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
         {
             controls.Enable();
         }
+
+        // **FIXED: Re-lock cursor after cutscene**
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        Debug.Log("PlayerController: Cursor re-locked after cutscene");
 
         // 🎬 SET THE CUTSCENE ANIMATOR BOOL BACK TO FALSE
         if (animator != null)
