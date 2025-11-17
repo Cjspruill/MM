@@ -148,9 +148,15 @@ public class ComboController : MonoBehaviour
 
         bool attackHeld = controls.Player.Attack.IsPressed();
         bool absorbHeld = controls.Player.Absorb.IsPressed();
+        bool blockHeld = controls.Player.Block.IsPressed();
 
-        // Handle blocking
-        if (blockEnabled && attackHeld && absorbHeld && !isAttacking && !inRecovery)
+        // Handle blocking - supports both methods:
+        // 1. Attack + Absorb held together (mouse/keyboard)
+        // 2. Dedicated Block button (gamepad)
+        bool shouldBlock = blockEnabled && !isAttacking && !inRecovery &&
+                          ((attackHeld && absorbHeld) || blockHeld);
+
+        if (shouldBlock)
         {
             if (!isBlocking && !blockStarting)
             {
