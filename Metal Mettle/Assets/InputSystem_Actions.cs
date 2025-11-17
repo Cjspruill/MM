@@ -199,6 +199,51 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""TargetLock"",
+                    ""type"": ""Button"",
+                    ""id"": ""d53b4ead-a21d-427c-8523-4e3aa6416932"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""SwitchTarget"",
+                    ""type"": ""Button"",
+                    ""id"": ""2abbcd1c-3b06-4d69-a7d6-de5d4d0d4181"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""LeftGrip"",
+                    ""type"": ""Button"",
+                    ""id"": ""78c230df-1201-43e8-a365-4095cbc5bb80"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""RightGrip"",
+                    ""type"": ""Button"",
+                    ""id"": ""569cd2c6-dda8-4887-8663-4014a42c9aaa"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Block"",
+                    ""type"": ""Button"",
+                    ""id"": ""29843f7c-7bc9-46dc-aded-a2e80f99bb69"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -601,7 +646,7 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
                 {
                     ""name"": """",
                     ""id"": ""300d3c7a-c788-4206-bf64-eb0d187f8816"",
-                    ""path"": ""<Gamepad>/leftTrigger"",
+                    ""path"": ""<Gamepad>/buttonNorth"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": "";Gamepad"",
@@ -650,6 +695,83 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": """",
                     ""action"": ""Execution"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""5dfb0b87-4ece-482b-b413-99c101243b0a"",
+                    ""path"": ""<Keyboard>/tab"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": "";Keyboard&Mouse"",
+                    ""action"": ""TargetLock"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""77c8f655-7ac9-461a-8559-b28f9547b979"",
+                    ""path"": ""<Gamepad>/rightStickPress"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": "";Gamepad"",
+                    ""action"": ""TargetLock"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""f062f427-d28d-4672-9bf4-bd0ee9bd3f62"",
+                    ""path"": ""<Keyboard>/q"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""SwitchTarget"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""7ed6d198-dac5-4c5b-9268-951c4d457c2e"",
+                    ""path"": ""<Gamepad>/rightShoulder"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": "";Gamepad"",
+                    ""action"": ""SwitchTarget"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""77bc9eb4-22a5-45df-a59e-72781a3ef5e0"",
+                    ""path"": ""<Gamepad>/leftTrigger"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": "";Gamepad"",
+                    ""action"": ""LeftGrip"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""14f4a675-00d3-456d-897a-29e95dd4dcc3"",
+                    ""path"": ""<Gamepad>/rightTrigger"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": "";Gamepad"",
+                    ""action"": ""RightGrip"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""a42dcfd6-1d3e-4336-9947-b523958e6e4d"",
+                    ""path"": ""<Gamepad>/buttonEast"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": "";Gamepad"",
+                    ""action"": ""Block"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -1249,6 +1371,11 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
         m_Player_Absorb = m_Player.FindAction("Absorb", throwIfNotFound: true);
         m_Player_Pause = m_Player.FindAction("Pause", throwIfNotFound: true);
         m_Player_Execution = m_Player.FindAction("Execution", throwIfNotFound: true);
+        m_Player_TargetLock = m_Player.FindAction("TargetLock", throwIfNotFound: true);
+        m_Player_SwitchTarget = m_Player.FindAction("SwitchTarget", throwIfNotFound: true);
+        m_Player_LeftGrip = m_Player.FindAction("LeftGrip", throwIfNotFound: true);
+        m_Player_RightGrip = m_Player.FindAction("RightGrip", throwIfNotFound: true);
+        m_Player_Block = m_Player.FindAction("Block", throwIfNotFound: true);
         // UI
         m_UI = asset.FindActionMap("UI", throwIfNotFound: true);
         m_UI_Navigate = m_UI.FindAction("Navigate", throwIfNotFound: true);
@@ -1354,6 +1481,11 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
     private readonly InputAction m_Player_Absorb;
     private readonly InputAction m_Player_Pause;
     private readonly InputAction m_Player_Execution;
+    private readonly InputAction m_Player_TargetLock;
+    private readonly InputAction m_Player_SwitchTarget;
+    private readonly InputAction m_Player_LeftGrip;
+    private readonly InputAction m_Player_RightGrip;
+    private readonly InputAction m_Player_Block;
     /// <summary>
     /// Provides access to input actions defined in input action map "Player".
     /// </summary>
@@ -1413,6 +1545,26 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Player/Execution".
         /// </summary>
         public InputAction @Execution => m_Wrapper.m_Player_Execution;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/TargetLock".
+        /// </summary>
+        public InputAction @TargetLock => m_Wrapper.m_Player_TargetLock;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/SwitchTarget".
+        /// </summary>
+        public InputAction @SwitchTarget => m_Wrapper.m_Player_SwitchTarget;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/LeftGrip".
+        /// </summary>
+        public InputAction @LeftGrip => m_Wrapper.m_Player_LeftGrip;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/RightGrip".
+        /// </summary>
+        public InputAction @RightGrip => m_Wrapper.m_Player_RightGrip;
+        /// <summary>
+        /// Provides access to the underlying input action "Player/Block".
+        /// </summary>
+        public InputAction @Block => m_Wrapper.m_Player_Block;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -1475,6 +1627,21 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
             @Execution.started += instance.OnExecution;
             @Execution.performed += instance.OnExecution;
             @Execution.canceled += instance.OnExecution;
+            @TargetLock.started += instance.OnTargetLock;
+            @TargetLock.performed += instance.OnTargetLock;
+            @TargetLock.canceled += instance.OnTargetLock;
+            @SwitchTarget.started += instance.OnSwitchTarget;
+            @SwitchTarget.performed += instance.OnSwitchTarget;
+            @SwitchTarget.canceled += instance.OnSwitchTarget;
+            @LeftGrip.started += instance.OnLeftGrip;
+            @LeftGrip.performed += instance.OnLeftGrip;
+            @LeftGrip.canceled += instance.OnLeftGrip;
+            @RightGrip.started += instance.OnRightGrip;
+            @RightGrip.performed += instance.OnRightGrip;
+            @RightGrip.canceled += instance.OnRightGrip;
+            @Block.started += instance.OnBlock;
+            @Block.performed += instance.OnBlock;
+            @Block.canceled += instance.OnBlock;
         }
 
         /// <summary>
@@ -1522,6 +1689,21 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
             @Execution.started -= instance.OnExecution;
             @Execution.performed -= instance.OnExecution;
             @Execution.canceled -= instance.OnExecution;
+            @TargetLock.started -= instance.OnTargetLock;
+            @TargetLock.performed -= instance.OnTargetLock;
+            @TargetLock.canceled -= instance.OnTargetLock;
+            @SwitchTarget.started -= instance.OnSwitchTarget;
+            @SwitchTarget.performed -= instance.OnSwitchTarget;
+            @SwitchTarget.canceled -= instance.OnSwitchTarget;
+            @LeftGrip.started -= instance.OnLeftGrip;
+            @LeftGrip.performed -= instance.OnLeftGrip;
+            @LeftGrip.canceled -= instance.OnLeftGrip;
+            @RightGrip.started -= instance.OnRightGrip;
+            @RightGrip.performed -= instance.OnRightGrip;
+            @RightGrip.canceled -= instance.OnRightGrip;
+            @Block.started -= instance.OnBlock;
+            @Block.performed -= instance.OnBlock;
+            @Block.canceled -= instance.OnBlock;
         }
 
         /// <summary>
@@ -1906,6 +2088,41 @@ public partial class @InputSystem_Actions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnExecution(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "TargetLock" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnTargetLock(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "SwitchTarget" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnSwitchTarget(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "LeftGrip" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnLeftGrip(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "RightGrip" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnRightGrip(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Block" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnBlock(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "UI" which allows adding and removing callbacks.

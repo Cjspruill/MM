@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 2680022142810504579}
   - component: {fileID: 2521031087679563329}
   - component: {fileID: 9154229743375182772}
-  m_Layer: 3
+  m_Layer: 0
   m_Name: AttackCube
   m_TagString: Untagged
   m_Icon: {fileID: 0}

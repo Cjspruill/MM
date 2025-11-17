@@ -78,7 +78,6 @@ public class DeathSaveUI : MonoBehaviour
             canvasGroup.interactable = true;
             canvasGroup.blocksRaycasts = true;
         }
-        Debug.Log("DeathSaveUI: Show() called - fading in");
     }
 
     /// <summary>
@@ -92,7 +91,6 @@ public class DeathSaveUI : MonoBehaviour
             canvasGroup.interactable = false;
             canvasGroup.blocksRaycasts = false;
         }
-        Debug.Log("DeathSaveUI: Hide() called - fading out");
     }
 
     /// <summary>

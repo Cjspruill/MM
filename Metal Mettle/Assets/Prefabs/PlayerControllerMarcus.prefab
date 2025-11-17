@@ -25356,7 +25356,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MaskFeedingUI
   maskFeeder: {fileID: 0}
-  tracker: {fileID: 0}
   uiPanel: {fileID: 7151723472165321371}
   progressSlider: {fileID: 3039086393345308146}
   progressText: {fileID: 5101004264838767980}
@@ -25500,6 +25499,7 @@ GameObject:
   - component: {fileID: 77189486226760832}
   - component: {fileID: 3210974349387316311}
   - component: {fileID: 7065177907915856463}
+  - component: {fileID: 4077941019541022487}
   m_Layer: 8
   m_Name: PlayerControllerMarcus
   m_TagString: Player
@@ -25596,6 +25596,7 @@ MonoBehaviour:
   bloodSystem: {fileID: 1149368816719480044}
   comboController: {fileID: 3577213553172988952}
   tutorialManager: {fileID: 0}
+  targetLockSystem: {fileID: 4077941019541022487}
   moveSpeed: 5
   sprintSpeed: 8
   sprintBloodCost: 0.5
@@ -25605,10 +25606,46 @@ MonoBehaviour:
   animationSmoothTime: 0.1
   walkAnimationValue: 0.5
   sprintAnimationValue: 1
+  cutsceneAnimatorBool: InCutscene
+  jumpAnimatorTrigger: Jump
+  inAirAnimatorBool: InAir
   allowMovementDuringAttack: 0
   allowMovementDuringBlock: 0
   attackMovementSpeedMultiplier: 0.3
   lockCursorOnAttack: 1
+  groundCheckDistance: 0.3
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 5113
+  dashDistance: 0.75
+  dashDuration: 0.3
+  dashCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  dashCooldown: 0.5
+  dashAnimatorTrigger: Dash
+  canDashWhileAttacking: 0
 --- !u!114 &3577213553172988952
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -26190,6 +26227,37 @@ MonoBehaviour:
   executionPromptUI: {fileID: 8232097173686051338}
   deathSaveTriggerSound: {fileID: 0}
   executionSound: {fileID: 0}
+--- !u!114 &4077941019541022487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3960976435513088089}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d82074a9a4066e845a71c3a86cd582f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TargetLockSystem
+  playerTransform: {fileID: 7200722129842668370}
+  mainCamera: {fileID: 6210255711630646904}
+  playerController: {fileID: 0}
+  targetLayers:
+    serializedVersion: 2
+    m_Bits: 4104
+  lockOnRange: 10
+  lockOnAngle: 360
+  breakLockDistance: 25
+  switchCooldown: 0.3
+  switchAngle: 90
+  autoRelockOnDeath: 1
+  rotationSpeed: 10
+  smoothRotation: 1
+  lockOnIndicatorPrefab: {fileID: 0}
+  indicatorOffset: {x: 0, y: 2, z: 0}
+  showDebugGizmos: 0
+  lockRangeColor: {r: 1, g: 1, b: 0, a: 0.2}
+  lockedTargetColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &4069703474135247471
 GameObject:
   m_ObjectHideFlags: 0
