@@ -98,7 +98,7 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
     {
         controller = GetComponent<CharacterController>();
         animator = GetComponent<Animator>();
-        controls = InputManager.Instance.Controls;
+        controls = InputManager.Instance.controls;
         tutorialManager = FindFirstObjectByType<TutorialManager>();
         controls.Enable();
 

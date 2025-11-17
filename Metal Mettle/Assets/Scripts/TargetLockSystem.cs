@@ -51,7 +51,7 @@ public class TargetLockSystem : MonoBehaviour
 
     private void Start()
     {
-        controls = InputManager.Instance.Controls;
+        controls = InputManager.Instance.controls;
 
         if (playerTransform == null)
             playerTransform = transform;

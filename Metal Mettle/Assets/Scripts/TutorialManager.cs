@@ -104,8 +104,8 @@ public class TutorialManager : MonoBehaviour
         // Get input actions from InputManager
         if (InputManager.Instance != null)
         {
-            attackAction = InputManager.Instance.Controls.Player.Attack;
-            executionAction = InputManager.Instance.Controls.Player.Execution;
+            attackAction = InputManager.Instance.controls.Player.Attack;
+            executionAction = InputManager.Instance.controls.Player.Execution;
 
             if (showDebugLogs)
                 Debug.Log("Tutorial input actions assigned from InputManager");
@@ -174,8 +174,8 @@ public class TutorialManager : MonoBehaviour
             if (InputManager.Instance != null)
             {
                 Debug.Log("InputManager exists, trying to re-get actions...");
-                attackAction = InputManager.Instance.Controls.Player.Attack;
-                executionAction = InputManager.Instance.Controls.Player.Execution;
+                attackAction = InputManager.Instance.controls.Player.Attack;
+                executionAction = InputManager.Instance.controls.Player.Execution;
             }
             return;
         }

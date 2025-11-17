@@ -32,7 +32,7 @@ public class CustomFreeLookCamera : MonoBehaviour, ICutsceneControllable
 
     private void Start()
     {
-        controls = InputManager.Instance.Controls;
+        controls = InputManager.Instance.controls;
         controls.Enable();
         currentDistance = distance;
     }

@@ -90,7 +90,7 @@ public class ComboController : MonoBehaviour
 
     void Start()
     {
-        controls = InputManager.Instance.Controls;
+        controls = InputManager.Instance.controls;
         controls.Enable();
 
         // Disable all hitboxes at start

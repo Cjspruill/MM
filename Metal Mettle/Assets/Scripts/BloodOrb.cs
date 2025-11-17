@@ -146,7 +146,7 @@ public class BloodOrb : MonoBehaviour
             }
         }
 
-        controls = InputManager.Instance.Controls;
+        controls = InputManager.Instance.controls;
 
         float randomSize = Random.Range(minSize, maxSize);
         transform.localScale = Vector3.one * randomSize;
