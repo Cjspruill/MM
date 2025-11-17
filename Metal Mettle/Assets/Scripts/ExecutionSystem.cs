@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 
 public class ExecutionSystem : MonoBehaviour
 {
@@ -65,6 +66,10 @@ public class ExecutionSystem : MonoBehaviour
     public string stealthExecutionStateName = "StealthExecution"; // Stealth execution animation
     public float executionBlendTime = 0.1f; // Blend time for transition
 
+    [Header("Input Settings")]
+    [Tooltip("Threshold for gamepad triggers (0-1). Both triggers must exceed this to execute.")]
+    public float triggerThreshold = 0.5f;
+
     [Header("UI")]
     public GameObject executionPromptUI; // "Press E to Execute" prompt
     public GameObject stealthExecutionPromptUI; // "Press E to Assassinate" prompt
@@ -90,6 +95,9 @@ public class ExecutionSystem : MonoBehaviour
     private InputSystem_Actions inputActions;
     private int executionCount = 0;
 
+    // Gamepad trigger tracking
+    private bool wasTriggersPressed = false;
+
     void Awake()
     {
         inputActions = new InputSystem_Actions();
@@ -98,6 +106,7 @@ public class ExecutionSystem : MonoBehaviour
     void OnEnable()
     {
         inputActions.Player.Enable();
+        // Keep keyboard/mouse binding
         inputActions.Player.Execution.performed += OnExecutionPerformed;
     }
 
@@ -208,8 +217,54 @@ public class ExecutionSystem : MonoBehaviour
         {
             stealthExecutionPromptUI.SetActive(canStealthExecute);
         }
+
+        // GAMEPAD TRIGGER CHECK (continuous polling)
+        CheckGamepadTriggers();
     }
 
+    /// <summary>
+    /// Checks if both gamepad triggers are pressed simultaneously
+    /// </summary>
+    void CheckGamepadTriggers()
+    {
+        // Only check if gamepad is connected
+        if (Gamepad.current == null)
+        {
+            wasTriggersPressed = false;
+            return;
+        }
+
+        // Read both trigger values
+        float leftGrip = inputActions.Player.LeftGrip.ReadValue<float>();
+        float rightGrip = inputActions.Player.RightGrip.ReadValue<float>();
+
+        // Both triggers must exceed threshold
+        bool triggersPressed = leftGrip > triggerThreshold && rightGrip > triggerThreshold;
+
+        // Detect rising edge (just pressed)
+        if (triggersPressed && !wasTriggersPressed)
+        {
+            // NEW: Check if execution is unlocked first
+            if (bloodSystem != null && !bloodSystem.IsAbilityUnlocked("execution"))
+            {
+                if (showDebug)
+                {
+                    Debug.Log("⛔ Execution not unlocked yet!");
+                }
+                wasTriggersPressed = triggersPressed;
+                return;
+            }
+
+            // Try to execute using gamepad triggers
+            AttemptExecution();
+        }
+
+        wasTriggersPressed = triggersPressed;
+    }
+
+    /// <summary>
+    /// Keyboard/Mouse execution (E key)
+    /// </summary>
     void OnExecutionPerformed(InputAction.CallbackContext context)
     {
         // NEW: Check if execution is unlocked first
@@ -222,6 +277,14 @@ public class ExecutionSystem : MonoBehaviour
             return;
         }
 
+        AttemptExecution();
+    }
+
+    /// <summary>
+    /// Unified execution logic for both keyboard and gamepad
+    /// </summary>
+    void AttemptExecution()
+    {
         // Stealth execution takes priority
         if (nearestStealthExecutableEnemy != null)
         {

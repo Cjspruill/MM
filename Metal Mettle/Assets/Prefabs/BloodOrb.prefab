@@ -139,15 +139,15 @@ MonoBehaviour:
   surfaceStickiness: 0.3
   viscosity: 0.4
   enableDripTrail: 1
-  dripletPrefab: {fileID: 0}
-  dripletSize: 0.2
+  dripletPrefab: {fileID: 1322259714369156599, guid: dd2ad4a16cbc7c44483c818c16f2197b, type: 3}
+  dripletSize: 0.1
   spawnSplatterOnImpact: 1
   minImpactVelocity: 2
   splatOnLayers:
     serializedVersion: 2
     m_Bits: 128
   absorptionRange: 7
-  absorptionDuration: 0.75
+  absorptionDuration: 0.8
   absorptionCurve:
     serializedVersion: 2
     m_Curve:
