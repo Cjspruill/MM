@@ -49,8 +49,8 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
     public LayerMask groundLayer = -1; // Default to everything
 
     [Header("Dash Settings (Target Lock Only)")]
-    [Tooltip("Distance to dash in each direction")]
-    public float dashDistance = 5f; // Increased from 3f to 5f for more noticeable movement
+    [Tooltip("Distance to dash in each direction (arc length for circular dashes)")]
+    public float dashDistance = 5f;
     [Tooltip("How long the dash takes")]
     public float dashDuration = 0.3f;
     [Tooltip("Animation curve for dash movement (ease in/out)")]
@@ -63,8 +63,6 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
     public bool canDashWhileAttacking = false;
     [Tooltip("Use circular dash that orbits around target instead of straight line?")]
     public bool useCircularDash = true;
-    [Tooltip("Degrees to rotate around target when dashing left/right (if circular dash enabled)")]
-    public float circularDashAngle = 45f;
 
     private Vector3 velocity;
     private bool isGrounded;
@@ -535,6 +533,7 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
 
     /// <summary>
     /// Initialize a circular dash that orbits around the locked target
+    /// Uses consistent arc length (dashDistance) regardless of radius from target
     /// </summary>
     private void InitCircularDash(bool dashRight)
     {
@@ -552,11 +551,18 @@ public class PlayerController : MonoBehaviour, ICutsceneControllable
         // Calculate start angle (current position)
         circularDashStartAngle = Mathf.Atan2(toPlayer.z, toPlayer.x) * Mathf.Rad2Deg;
 
-        // Calculate end angle (rotate by circularDashAngle)
-        float angleChange = dashRight ? circularDashAngle : -circularDashAngle;
+        // 🔧 FIX: Calculate angle based on desired arc length, not fixed angle
+        // Arc Length = Radius × Angle (in radians)
+        // Therefore: Angle (radians) = Arc Length / Radius
+        float arcLength = dashDistance;
+        float angleInRadians = arcLength / Mathf.Max(circularDashRadius, 0.1f); // Prevent divide by zero
+        float angleInDegrees = angleInRadians * Mathf.Rad2Deg;
+
+        // Apply direction (right = positive, left = negative)
+        float angleChange = dashRight ? angleInDegrees : -angleInDegrees;
         circularDashEndAngle = circularDashStartAngle + angleChange;
 
-        Debug.Log($"🔵 CIRCULAR DASH: {(dashRight ? "RIGHT" : "LEFT")} - Angle: {circularDashStartAngle:F1}° → {circularDashEndAngle:F1}° (Radius: {circularDashRadius:F2}m)");
+        Debug.Log($"🔵 CIRCULAR DASH: {(dashRight ? "RIGHT" : "LEFT")} - Radius: {circularDashRadius:F2}m, Arc Length: {arcLength:F2}m, Angle: {circularDashStartAngle:F1}° → {circularDashEndAngle:F1}° (Δ{angleChange:F1}°)");
     }
 
     /// <summary>

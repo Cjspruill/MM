@@ -2,9 +2,10 @@
 using UnityEngine.AI;
 
 /// <summary>
-/// Enhanced EnemyMovement with pause support
+/// Enhanced EnemyMovement with pause support and configurable rotation
 /// Handles all enemy movement: wandering, chasing, NavMeshAgent control
 /// Now respects cutscene and tutorial pause states
+/// Features adjustable rotation speed for tactical combat
 /// </summary>
 public class EnemyMovement : MonoBehaviour
 {
@@ -42,6 +43,10 @@ public class EnemyMovement : MonoBehaviour
     public float avoidanceRadius = 0.5f;
     public int avoidancePriority = 50;
     public bool disableAvoidanceInCombat = true;
+
+    [Header("Combat Rotation")]
+    [Tooltip("Lower values = slower turn speed, giving players more time to dodge and reposition")]
+    public float combatRotationSpeed = 3f; // Try 2-4 for good tactical feel
 
     [Header("Debug")]
     public bool showDebug = true;
@@ -193,12 +198,17 @@ public class EnemyMovement : MonoBehaviour
             agent.obstacleAvoidanceType = ObstacleAvoidanceType.NoObstacleAvoidance;
         }
 
+        // Smooth rotation towards player using configurable speed
         Vector3 directionToPlayer = (player.position - transform.position).normalized;
         directionToPlayer.y = 0;
         if (directionToPlayer != Vector3.zero)
         {
-            transform.rotation = Quaternion.Slerp(transform.rotation,
-                Quaternion.LookRotation(directionToPlayer), 10f * Time.deltaTime);
+            Quaternion targetRotation = Quaternion.LookRotation(directionToPlayer);
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                combatRotationSpeed * Time.deltaTime
+            );
         }
     }
 

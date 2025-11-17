@@ -5,6 +5,7 @@ using UnityEngine.InputSystem;
 /// Death Save System - Allows player to perform a desperate execution to recover from near-death
 /// Triggers slow motion when health is below threshold
 /// Can only be used once per checkpoint
+/// Supports dual-grip execution for VR/gamepad controllers
 /// </summary>
 public class DeathSaveSystem : MonoBehaviour
 {
@@ -20,14 +21,29 @@ public class DeathSaveSystem : MonoBehaviour
     [SerializeField] private Color deathSaveColor = new Color(1f, 0.2f, 0.2f, 1f);
     [SerializeField] private DeathSaveUI executionPromptUI; // Optional UI prompt
 
+    [Header("Grip Execution")]
+    [Tooltip("Time window (in seconds) for both grips to be pressed to count as simultaneous")]
+    [SerializeField] private float gripSimultaneousWindow = 0.2f;
+    [Tooltip("Enable grip-based execution")]
+    [SerializeField] private bool enableGripExecution = true;
+
     [Header("Audio")]
     [SerializeField] private AudioClip deathSaveTriggerSound;
     [SerializeField] private AudioClip executionSound;
+
+    [Header("Debug")]
+    [SerializeField] private bool showDebugLogs = true;
 
     // State tracking
     private bool isInDeathSaveMode = false;
     private bool hasUsedDeathSave = false;
     private bool wasInDeathSaveLastFrame = false;
+
+    // Grip state tracking
+    private bool leftGripPressed = false;
+    private bool rightGripPressed = false;
+    private float leftGripPressTime = -1f;
+    private float rightGripPressTime = -1f;
 
     // Component references
     private BloodSystem bloodSystem;
@@ -36,8 +52,10 @@ public class DeathSaveSystem : MonoBehaviour
     private Health playerHealth;
     private Animator playerAnimator;
 
-    // Input action for execution
+    // Input actions
     private InputAction executionAction;
+    private InputAction leftGripInput;
+    private InputAction rightGripInput;
 
     private void Awake()
     {
@@ -68,20 +86,38 @@ public class DeathSaveSystem : MonoBehaviour
         // Setup input system
         controls = InputManager.Instance.controls;
 
-        // Bind execution to a key (E for Execute)
-        executionAction = controls.Player.Execution; // Or create custom action
+        // Bind execution actions
+        executionAction = controls.Player.Execution;
+        leftGripInput = controls.Player.LeftGrip;
+        rightGripInput = controls.Player.RightGrip;
     }
 
     private void OnEnable()
     {
         controls.Enable();
         executionAction.performed += OnExecutionInput;
+
+        if (enableGripExecution)
+        {
+            leftGripInput.performed += OnLeftGripPressed;
+            leftGripInput.canceled += OnLeftGripReleased;
+            rightGripInput.performed += OnRightGripPressed;
+            rightGripInput.canceled += OnRightGripReleased;
+        }
     }
 
     private void OnDisable()
     {
         controls.Disable();
         executionAction.performed -= OnExecutionInput;
+
+        if (enableGripExecution)
+        {
+            leftGripInput.performed -= OnLeftGripPressed;
+            leftGripInput.canceled -= OnLeftGripReleased;
+            rightGripInput.performed -= OnRightGripPressed;
+            rightGripInput.canceled -= OnRightGripReleased;
+        }
     }
 
     private void Update()
@@ -102,6 +138,12 @@ public class DeathSaveSystem : MonoBehaviour
             ExitDeathSaveMode();
         }
 
+        // Check for grip-based execution
+        if (isInDeathSaveMode && enableGripExecution)
+        {
+            CheckGripExecution();
+        }
+
         // Update UI prompt visibility
         if (executionPromptUI != null)
         {
@@ -111,24 +153,105 @@ public class DeathSaveSystem : MonoBehaviour
             if (isInDeathSaveMode && hasTarget)
             {
                 executionPromptUI.Show();
-                Debug.Log($"Showing UI - Enemy in range: {nearestEnemy.gameObject.name}");
+                if (showDebugLogs)
+                {
+                    Debug.Log($"Showing UI - Enemy in range: {nearestEnemy.gameObject.name}");
+                }
             }
             else
             {
                 executionPromptUI.Hide();
-                if (isInDeathSaveMode && !hasTarget)
+                if (isInDeathSaveMode && !hasTarget && showDebugLogs)
                 {
                     Debug.Log("Death Save active but no enemy in range");
                 }
             }
         }
-        else if (isInDeathSaveMode)
+        else if (isInDeathSaveMode && showDebugLogs)
         {
             Debug.LogWarning("DeathSaveSystem: executionPromptUI is not assigned!");
         }
 
         wasInDeathSaveLastFrame = isInDeathSaveMode;
     }
+
+    // ============================================
+    // GRIP INPUT HANDLERS
+    // ============================================
+
+    private void OnLeftGripPressed(InputAction.CallbackContext context)
+    {
+        leftGripPressed = true;
+        leftGripPressTime = Time.unscaledTime; // Use unscaled time since we're in slow motion
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ [Death Save] Left grip pressed");
+        }
+    }
+
+    private void OnLeftGripReleased(InputAction.CallbackContext context)
+    {
+        leftGripPressed = false;
+        leftGripPressTime = -1f;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ [Death Save] Left grip released");
+        }
+    }
+
+    private void OnRightGripPressed(InputAction.CallbackContext context)
+    {
+        rightGripPressed = true;
+        rightGripPressTime = Time.unscaledTime; // Use unscaled time since we're in slow motion
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ [Death Save] Right grip pressed");
+        }
+    }
+
+    private void OnRightGripReleased(InputAction.CallbackContext context)
+    {
+        rightGripPressed = false;
+        rightGripPressTime = -1f;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ [Death Save] Right grip released");
+        }
+    }
+
+    private void CheckGripExecution()
+    {
+        // Check if both grips are pressed
+        if (leftGripPressed && rightGripPressed)
+        {
+            // Check if they were pressed within the simultaneous window
+            float timeDifference = Mathf.Abs(leftGripPressTime - rightGripPressTime);
+
+            if (timeDifference <= gripSimultaneousWindow)
+            {
+                if (showDebugLogs)
+                {
+                    Debug.Log("🙌 [Death Save] Both grips pressed simultaneously! Attempting execution...");
+                }
+
+                TryExecuteEnemy();
+
+                // Reset grip states to prevent repeated execution
+                leftGripPressed = false;
+                rightGripPressed = false;
+                leftGripPressTime = -1f;
+                rightGripPressTime = -1f;
+            }
+        }
+    }
+
+    // ============================================
+    // DEATH SAVE MODE
+    // ============================================
 
     private void EnterDeathSaveMode()
     {
@@ -144,7 +267,7 @@ public class DeathSaveSystem : MonoBehaviour
             audioSource.PlayOneShot(deathSaveTriggerSound);
         }
 
-        Debug.Log("⚠️ DEATH SAVE MODE ACTIVATED - Press E to execute nearby enemy!");
+        Debug.Log("⚠️ DEATH SAVE MODE ACTIVATED - Press E or grip both controllers to execute nearby enemy!");
     }
 
     private void ExitDeathSaveMode()
@@ -155,10 +278,26 @@ public class DeathSaveSystem : MonoBehaviour
         Time.timeScale = 1f;
         Time.fixedDeltaTime = 0.02f;
 
+        // Reset grip states
+        leftGripPressed = false;
+        rightGripPressed = false;
+        leftGripPressTime = -1f;
+        rightGripPressTime = -1f;
+
         Debug.Log("Death Save mode deactivated");
     }
 
+    // ============================================
+    // EXECUTION
+    // ============================================
+
     private void OnExecutionInput(InputAction.CallbackContext context)
+    {
+        if (!isInDeathSaveMode) return;
+        TryExecuteEnemy();
+    }
+
+    private void TryExecuteEnemy()
     {
         if (!isInDeathSaveMode) return;
 
@@ -171,7 +310,10 @@ public class DeathSaveSystem : MonoBehaviour
         }
         else
         {
-            Debug.Log("No enemy in range for execution!");
+            if (showDebugLogs)
+            {
+                Debug.Log("No enemy in range for execution!");
+            }
         }
     }
 
@@ -208,7 +350,10 @@ public class DeathSaveSystem : MonoBehaviour
         if (playerAnimator != null)
         {
             playerAnimator.Play("Execution");
-            Debug.Log("Playing execution animation");
+            if (showDebugLogs)
+            {
+                Debug.Log("Playing execution animation");
+            }
         }
 
         // Play execution audio
@@ -217,7 +362,7 @@ public class DeathSaveSystem : MonoBehaviour
             audioSource.PlayOneShot(executionSound);
         }
 
-        // NEW: Use ExecutionKill method instead of TakeDamage
+        // Use ExecutionKill method instead of TakeDamage
         // This will properly fire the onExecution event for tracking
         targetEnemy.ExecutionKill();
 

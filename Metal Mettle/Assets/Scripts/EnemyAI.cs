@@ -302,7 +302,7 @@ public class EnemyAI : MonoBehaviour, ICutsceneControllable
     {
         if (combatSystem != null)
         {
-            combatSystem.ActivateHitbox();
+            combatSystem.ActivateHitbox(collider);
         }
     }
 
@@ -310,7 +310,7 @@ public class EnemyAI : MonoBehaviour, ICutsceneControllable
     {
         if (combatSystem != null)
         {
-            combatSystem.DeactivateHitbox();
+            combatSystem.DeactivateHitbox(collider);
         }
     }
 

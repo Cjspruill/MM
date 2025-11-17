@@ -149525,6 +149525,10 @@ PrefabInstance:
       value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 3741558112251159452, guid: 2118f05f98355f34e98c7f5d756b30aa, type: 3}
+      propertyPath: canDashWhileAttacking
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3741558112251159452, guid: 2118f05f98355f34e98c7f5d756b30aa, type: 3}
       propertyPath: targetLockMovementMultiplier
       value: 0.35
       objectReference: {fileID: 0}

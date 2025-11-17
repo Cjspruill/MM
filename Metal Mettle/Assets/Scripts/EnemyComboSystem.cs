@@ -1,15 +1,17 @@
 ﻿using UnityEngine;
 
 /// <summary>
-/// Enhanced Enemy combat system with pause support
-/// Handles attacks, combos, and hitboxes
+/// Enhanced Enemy combat system with pause support and dual arm attack colliders
+/// Handles attacks, combos, and hitboxes with left/right arm specification
 /// Now respects cutscene and tutorial pause states
 /// </summary>
 public class EnemyComboSystem : MonoBehaviour
 {
     [Header("Combat Settings")]
-    public BoxCollider attackHitbox;
-    public MeshRenderer debugRenderer;
+    public BoxCollider leftArmHitbox;
+    public BoxCollider rightArmHitbox;
+    public MeshRenderer leftArmDebugRenderer;
+    public MeshRenderer rightArmDebugRenderer;
     public float attackRange = 2.5f;
     public float attackDuration = 0.3f;
     public int minComboAttacks = 2;
@@ -32,7 +34,8 @@ public class EnemyComboSystem : MonoBehaviour
 
     // References
     private Animator animator;
-    private EnemyAttackCollider enemyAttackCollider;
+    private EnemyAttackCollider leftArmAttackCollider;
+    private EnemyAttackCollider rightArmAttackCollider;
     private TutorialManager tutorialManager;
 
     // Combat state
@@ -58,17 +61,40 @@ public class EnemyComboSystem : MonoBehaviour
         if (animator == null)
             Debug.LogError($"{gameObject.name}: No Animator component found!");
 
-        if (attackHitbox != null)
+        // Setup left arm hitbox
+        if (leftArmHitbox != null)
         {
-            attackHitbox.enabled = false;
-            enemyAttackCollider = attackHitbox.GetComponent<EnemyAttackCollider>();
+            leftArmHitbox.enabled = false;
+            leftArmAttackCollider = leftArmHitbox.GetComponent<EnemyAttackCollider>();
+            if (leftArmAttackCollider == null)
+                Debug.LogWarning($"{gameObject.name}: No EnemyAttackCollider on left arm hitbox!");
+        }
+        else
+        {
+            Debug.LogWarning($"{gameObject.name}: No left arm hitbox assigned!");
         }
 
-        if (debugRenderer != null)
-            debugRenderer.enabled = false;
+        // Setup right arm hitbox
+        if (rightArmHitbox != null)
+        {
+            rightArmHitbox.enabled = false;
+            rightArmAttackCollider = rightArmHitbox.GetComponent<EnemyAttackCollider>();
+            if (rightArmAttackCollider == null)
+                Debug.LogWarning($"{gameObject.name}: No EnemyAttackCollider on right arm hitbox!");
+        }
+        else
+        {
+            Debug.LogWarning($"{gameObject.name}: No right arm hitbox assigned!");
+        }
+
+        // Disable debug renderers initially
+        if (leftArmDebugRenderer != null)
+            leftArmDebugRenderer.enabled = false;
+        if (rightArmDebugRenderer != null)
+            rightArmDebugRenderer.enabled = false;
 
         if (showDebug)
-            Debug.Log($"{gameObject.name} initialized combat system with pause support (cooldown: {comboCooldown}s)");
+            Debug.Log($"{gameObject.name} initialized combat system with dual arm colliders and pause support (cooldown: {comboCooldown}s)");
     }
 
     void Update()
@@ -200,43 +226,97 @@ public class EnemyComboSystem : MonoBehaviour
                 Debug.Log($"⚔️ {gameObject.name} attack {currentComboStep}/{targetComboLength} - {triggerName}");
         }
 
-        // Always schedule fallback activation/deactivation
-        CancelInvoke(nameof(ActivateHitbox));
-        CancelInvoke(nameof(DeactivateHitbox));
-        Invoke(nameof(ActivateHitbox), attackWindupTime);
-        Invoke(nameof(DeactivateHitbox), attackWindupTime + attackDuration + 0.05f);
+        // NOTE: Animation events will call ActivateHitbox/DeactivateHitbox with arm specification
+        // No fallback scheduling here - rely on animation events
     }
 
-    public void ActivateHitbox()
+    /// <summary>
+    /// Activates the specified arm's hitbox. Called from animation events.
+    /// </summary>
+    /// <param name="armName">"leftArm" or "rightArm"</param>
+    public void ActivateHitbox(string armName)
     {
         // CRITICAL: Don't activate hitbox if paused
         if (isPaused)
         {
             if (showDebug)
-                Debug.Log($"❌ {gameObject.name} ActivateHitbox() cancelled - paused");
+                Debug.Log($"❌ {gameObject.name} ActivateHitbox({armName}) cancelled - paused");
             return;
         }
 
-        if (enemyAttackCollider != null)
-            enemyAttackCollider.ClearHitList();
+        string armLower = armName.ToLower();
 
-        if (attackHitbox != null)
-            attackHitbox.enabled = true;
+        if (armLower == "leftarm" || armLower == "left")
+        {
+            if (leftArmAttackCollider != null)
+                leftArmAttackCollider.ClearHitList();
 
-        if (debugRenderer != null && showDebug)
-            debugRenderer.enabled = true;
+            if (leftArmHitbox != null)
+                leftArmHitbox.enabled = true;
+
+            if (leftArmDebugRenderer != null && showDebug)
+                leftArmDebugRenderer.enabled = true;
+
+            if (showDebug)
+                Debug.Log($"👊 {gameObject.name} LEFT ARM hitbox activated");
+        }
+        else if (armLower == "rightarm" || armLower == "right")
+        {
+            if (rightArmAttackCollider != null)
+                rightArmAttackCollider.ClearHitList();
+
+            if (rightArmHitbox != null)
+                rightArmHitbox.enabled = true;
+
+            if (rightArmDebugRenderer != null && showDebug)
+                rightArmDebugRenderer.enabled = true;
+
+            if (showDebug)
+                Debug.Log($"👊 {gameObject.name} RIGHT ARM hitbox activated");
+        }
+        else
+        {
+            Debug.LogWarning($"⚠️ {gameObject.name} ActivateHitbox called with unknown arm: {armName}");
+        }
     }
 
-    public void DeactivateHitbox()
+    /// <summary>
+    /// Deactivates the specified arm's hitbox. Called from animation events.
+    /// </summary>
+    /// <param name="armName">"leftArm" or "rightArm"</param>
+    public void DeactivateHitbox(string armName)
     {
         if (!isAttacking && !inCombat)
             return;
 
-        if (attackHitbox != null)
-            attackHitbox.enabled = false;
+        string armLower = armName.ToLower();
 
-        if (debugRenderer != null && showDebug)
-            debugRenderer.enabled = false;
+        if (armLower == "leftarm" || armLower == "left")
+        {
+            if (leftArmHitbox != null)
+                leftArmHitbox.enabled = false;
+
+            if (leftArmDebugRenderer != null && showDebug)
+                leftArmDebugRenderer.enabled = false;
+
+            if (showDebug)
+                Debug.Log($"🛑 {gameObject.name} LEFT ARM hitbox deactivated");
+        }
+        else if (armLower == "rightarm" || armLower == "right")
+        {
+            if (rightArmHitbox != null)
+                rightArmHitbox.enabled = false;
+
+            if (rightArmDebugRenderer != null && showDebug)
+                rightArmDebugRenderer.enabled = false;
+
+            if (showDebug)
+                Debug.Log($"🛑 {gameObject.name} RIGHT ARM hitbox deactivated");
+        }
+        else
+        {
+            Debug.LogWarning($"⚠️ {gameObject.name} DeactivateHitbox called with unknown arm: {armName}");
+        }
 
         isAttacking = false;
 
@@ -293,11 +373,18 @@ public class EnemyComboSystem : MonoBehaviour
             animator.SetTrigger("HitReaction");
 
         CancelInvoke(nameof(PerformAttack));
-        CancelInvoke(nameof(ActivateHitbox));
-        CancelInvoke(nameof(DeactivateHitbox));
 
-        if (attackHitbox != null)
-            attackHitbox.enabled = false;
+        // Disable both hitboxes
+        if (leftArmHitbox != null)
+            leftArmHitbox.enabled = false;
+        if (rightArmHitbox != null)
+            rightArmHitbox.enabled = false;
+
+        // Disable both debug renderers
+        if (leftArmDebugRenderer != null && showDebug)
+            leftArmDebugRenderer.enabled = false;
+        if (rightArmDebugRenderer != null && showDebug)
+            rightArmDebugRenderer.enabled = false;
 
         isAttacking = false;
         EndCombo();
@@ -315,14 +402,18 @@ public class EnemyComboSystem : MonoBehaviour
     public void CancelAttack()
     {
         CancelInvoke(nameof(PerformAttack));
-        CancelInvoke(nameof(ActivateHitbox));
-        CancelInvoke(nameof(DeactivateHitbox));
 
-        if (attackHitbox != null)
-            attackHitbox.enabled = false;
+        // Disable both hitboxes
+        if (leftArmHitbox != null)
+            leftArmHitbox.enabled = false;
+        if (rightArmHitbox != null)
+            rightArmHitbox.enabled = false;
 
-        if (debugRenderer != null && showDebug)
-            debugRenderer.enabled = false;
+        // Disable both debug renderers
+        if (leftArmDebugRenderer != null && showDebug)
+            leftArmDebugRenderer.enabled = false;
+        if (rightArmDebugRenderer != null && showDebug)
+            rightArmDebugRenderer.enabled = false;
 
         isAttacking = false;
         EndCombo();
