@@ -44,6 +44,19 @@ public class MaskController : MonoBehaviour
     [Header("Input")]
     [SerializeField] private InputSystem_Actions controls;
     private InputAction executionInput;
+    private InputAction leftGripInput;
+    private InputAction rightGripInput;
+
+    [Header("Grip Collection")]
+    [Tooltip("Time window (in seconds) for both grips to be pressed to count as simultaneous")]
+    [SerializeField] private float gripSimultaneousWindow = 0.2f;
+    [Tooltip("Enable grip-based collection")]
+    [SerializeField] private bool enableGripCollection = true;
+
+    private bool leftGripPressed = false;
+    private bool rightGripPressed = false;
+    private float leftGripPressTime = -1f;
+    private float rightGripPressTime = -1f;
 
     [Header("References")]
     [SerializeField] private ObjectiveController objectiveController;
@@ -62,19 +75,38 @@ public class MaskController : MonoBehaviour
 
     private void Awake()
     {
-        controls = new InputSystem_Actions();
-        executionInput = controls.Player.Execution;
+        controls = InputManager.Instance.controls;
+        executionInput = controls.Player.Interact;
+        leftGripInput = controls.Player.LeftGrip;
+        rightGripInput = controls.Player.RightGrip;
     }
 
     private void OnEnable()
     {
         controls.Enable();
         executionInput.performed += OnExecutionPressed;
+
+        if (enableGripCollection)
+        {
+            leftGripInput.performed += OnLeftGripPressed;
+            leftGripInput.canceled += OnLeftGripReleased;
+            rightGripInput.performed += OnRightGripPressed;
+            rightGripInput.canceled += OnRightGripReleased;
+        }
     }
 
     private void OnDisable()
     {
         executionInput.performed -= OnExecutionPressed;
+
+        if (enableGripCollection)
+        {
+            leftGripInput.performed -= OnLeftGripPressed;
+            leftGripInput.canceled -= OnLeftGripReleased;
+            rightGripInput.performed -= OnRightGripPressed;
+            rightGripInput.canceled -= OnRightGripReleased;
+        }
+
         controls.Disable();
     }
 
@@ -166,12 +198,18 @@ public class MaskController : MonoBehaviour
         {
             Debug.Log($"MaskController started. {maskPieces.Count} pieces configured.");
             Debug.Log($"Cutscene enabled: {playCutsceneOnCollection}");
+            Debug.Log($"Grip collection enabled: {enableGripCollection}");
         }
     }
 
     private void Update()
     {
         CheckForCollectibles();
+
+        if (enableGripCollection)
+        {
+            CheckGripCollection();
+        }
     }
 
     private void CheckForCollectibles()
@@ -191,7 +229,90 @@ public class MaskController : MonoBehaviour
         }
     }
 
+    // ============================================
+    // GRIP INPUT HANDLERS
+    // ============================================
+
+    private void OnLeftGripPressed(InputAction.CallbackContext context)
+    {
+        leftGripPressed = true;
+        leftGripPressTime = Time.time;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ Left grip pressed");
+        }
+    }
+
+    private void OnLeftGripReleased(InputAction.CallbackContext context)
+    {
+        leftGripPressed = false;
+        leftGripPressTime = -1f;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ Left grip released");
+        }
+    }
+
+    private void OnRightGripPressed(InputAction.CallbackContext context)
+    {
+        rightGripPressed = true;
+        rightGripPressTime = Time.time;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ Right grip pressed");
+        }
+    }
+
+    private void OnRightGripReleased(InputAction.CallbackContext context)
+    {
+        rightGripPressed = false;
+        rightGripPressTime = -1f;
+
+        if (showDebugLogs)
+        {
+            Debug.Log("🖐️ Right grip released");
+        }
+    }
+
+    private void CheckGripCollection()
+    {
+        // Check if both grips are pressed
+        if (leftGripPressed && rightGripPressed)
+        {
+            // Check if they were pressed within the simultaneous window
+            float timeDifference = Mathf.Abs(leftGripPressTime - rightGripPressTime);
+
+            if (timeDifference <= gripSimultaneousWindow)
+            {
+                if (showDebugLogs)
+                {
+                    Debug.Log("🙌 Both grips pressed simultaneously! Attempting collection...");
+                }
+
+                TryCollectNearbyPiece();
+
+                // Reset grip states to prevent repeated collection
+                leftGripPressed = false;
+                rightGripPressed = false;
+                leftGripPressTime = -1f;
+                rightGripPressTime = -1f;
+            }
+        }
+    }
+
+    // ============================================
+    // COLLECTION METHODS
+    // ============================================
+
     private void OnExecutionPressed(InputAction.CallbackContext context)
+    {
+        TryCollectNearbyPiece();
+    }
+
+    private void TryCollectNearbyPiece()
     {
         if (nearbyCollectible != null && nearbyCollectible.isAccessible)
         {
@@ -217,6 +338,10 @@ public class MaskController : MonoBehaviour
             CollectPiece(pieceType);
             Destroy(nearbyCollectible.gameObject);
             nearbyCollectible = null;
+        }
+        else if (showDebugLogs && nearbyCollectible == null)
+        {
+            Debug.Log("No collectible nearby to grab.");
         }
     }
 

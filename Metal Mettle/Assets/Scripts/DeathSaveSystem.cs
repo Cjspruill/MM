@@ -66,7 +66,7 @@ public class DeathSaveSystem : MonoBehaviour
         }
 
         // Setup input system
-        controls = new InputSystem_Actions();
+        controls = InputManager.Instance.controls;
 
         // Bind execution to a key (E for Execute)
         executionAction = controls.Player.Execution; // Or create custom action

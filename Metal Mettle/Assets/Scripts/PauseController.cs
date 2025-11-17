@@ -28,7 +28,7 @@ public class PauseController : MonoBehaviour
         }
         Instance = this;
 
-        controls = new InputSystem_Actions();
+        controls = InputManager.Instance.controls;
         pauseAction = controls.Player.Pause;
 
         if (pausePanel != null)
